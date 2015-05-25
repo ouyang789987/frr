@@ -31,6 +31,7 @@
 /lib/test_privs
 /lib/test_ringbuf
 /lib/test_segv
+/lib/test_seqlock
 /lib/test_sig
 /lib/test_srcdest_table
 /lib/test_stream
