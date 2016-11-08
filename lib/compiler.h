@@ -65,6 +65,9 @@
 #define _FALLTHROUGH
 #endif
 
+/* for helper functions defined inside macros */
+#define macro_inline static inline __attribute__((unused))
+
 /*
  * for warnings on macros, put in the macro content like this:
  *   #define MACRO BLA CPP_WARN("MACRO has been deprecated")
