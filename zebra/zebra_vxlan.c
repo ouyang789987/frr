@@ -1203,12 +1203,11 @@ struct interface *zebra_get_vrr_intf_for_svi(struct interface *ifp)
 	struct zebra_vrf *zvrf = NULL;
 	struct interface *tmp_if = NULL;
 	struct zebra_if *zif = NULL;
-	struct listnode *node;
 
 	zvrf = vrf_info_lookup(ifp->vrf_id);
 	assert(zvrf);
 
-	for (ALL_LIST_ELEMENTS_RO(vrf_iflist(zvrf_id(zvrf)), node, tmp_if)) {
+	RB_FOREACH (tmp_if, if_name_head, &zvrf->vrf->ifaces_by_name) {
 		zif = tmp_if->info;
 		if (!zif)
 			continue;
@@ -1719,7 +1718,6 @@ static zebra_vni_t *zvni_map_vlan(struct interface *ifp,
 				  struct interface *br_if, vlanid_t vid)
 {
 	struct zebra_vrf *zvrf;
-	struct listnode *node;
 	struct interface *tmp_if;
 	struct zebra_if *zif;
 	struct zebra_l2info_bridge *br;
@@ -1739,7 +1737,7 @@ static zebra_vni_t *zvni_map_vlan(struct interface *ifp,
 
 	/* See if this interface (or interface plus VLAN Id) maps to a VxLAN */
 	/* TODO: Optimize with a hash. */
-	for (ALL_LIST_ELEMENTS_RO(vrf_iflist(zvrf_id(zvrf)), node, tmp_if)) {
+	RB_FOREACH (tmp_if, if_name_head, &zvrf->vrf->ifaces_by_name) {
 		zif = tmp_if->info;
 		if (!zif || zif->zif_type != ZEBRA_IF_VXLAN)
 			continue;
@@ -1772,7 +1770,6 @@ static zebra_vni_t *zvni_map_vlan(struct interface *ifp,
 static zebra_vni_t *zvni_map_svi(struct interface *ifp, struct interface *br_if)
 {
 	struct zebra_vrf *zvrf;
-	struct listnode *node;
 	struct interface *tmp_if;
 	struct zebra_if *zif;
 	struct zebra_l2info_bridge *br;
@@ -1811,7 +1808,7 @@ static zebra_vni_t *zvni_map_svi(struct interface *ifp, struct interface *br_if)
 
 	/* See if this interface (or interface plus VLAN Id) maps to a VxLAN */
 	/* TODO: Optimize with a hash. */
-	for (ALL_LIST_ELEMENTS_RO(vrf_iflist(zvrf_id(zvrf)), node, tmp_if)) {
+	RB_FOREACH (tmp_if, if_name_head, &zvrf->vrf->ifaces_by_name) {
 		zif = tmp_if->info;
 		if (!zif || zif->zif_type != ZEBRA_IF_VXLAN)
 			continue;
@@ -1846,7 +1843,6 @@ static zebra_vni_t *zvni_map_svi(struct interface *ifp, struct interface *br_if)
 static struct interface *zvni_map_to_svi(struct zebra_vrf *zvrf, vlanid_t vid,
 					 struct interface *br_if)
 {
-	struct listnode *node;
 	struct interface *tmp_if;
 	struct zebra_if *zif;
 	struct zebra_l2info_bridge *br;
@@ -1869,7 +1865,7 @@ static struct interface *zvni_map_to_svi(struct zebra_vrf *zvrf, vlanid_t vid,
 
 	/* Identify corresponding VLAN interface. */
 	/* TODO: Optimize with a hash. */
-	for (ALL_LIST_ELEMENTS_RO(vrf_iflist(zvrf_id(zvrf)), node, tmp_if)) {
+	RB_FOREACH (tmp_if, if_name_head, &zvrf->vrf->ifaces_by_name) {
 		/* Check oper status of the SVI. */
 		if (!if_is_operative(tmp_if))
 			continue;
@@ -2188,11 +2184,10 @@ static int zvni_send_del_to_client(struct zebra_vrf *zvrf, vni_t vni)
  */
 static void zvni_build_hash_table(struct zebra_vrf *zvrf)
 {
-	struct listnode *node;
 	struct interface *ifp;
 
 	/* Walk VxLAN interfaces and create VNI hash. */
-	for (ALL_LIST_ELEMENTS_RO(vrf_iflist(zvrf_id(zvrf)), node, ifp)) {
+	RB_FOREACH (ifp, if_name_head, &zvrf->vrf->ifaces_by_name) {
 		struct zebra_if *zif;
 		struct zebra_l2info_vxlan *vxl;
 		zebra_vni_t *zvni;
