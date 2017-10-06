@@ -172,7 +172,7 @@ void eigrp_distribute_update(struct distribute *dist)
 		return;
 	}
 
-	ifp = if_lookup_by_name(dist->ifname, VRF_DEFAULT);
+	ifp = if_lookup_by_name(dist->ifname, e->vrf_id);
 	if (ifp == NULL)
 		return;
 
@@ -294,7 +294,8 @@ void eigrp_distribute_update_interface(struct interface *ifp)
  */
 void eigrp_distribute_update_all(struct prefix_list *notused)
 {
-	struct vrf *vrf = vrf_lookup_by_id(VRF_DEFAULT);
+	struct eigrp *eigrp = eigrp_lookup();
+	struct vrf *vrf = vrf_lookup_by_id(eigrp->vrf_id);
 	struct interface *ifp;
 
 	RB_FOREACH (ifp, if_name_head, &vrf->ifaces_by_name)

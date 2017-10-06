@@ -194,12 +194,15 @@ void eigrp_nbr_delete(struct eigrp_neighbor *nbr)
 int holddown_timer_expired(struct thread *thread)
 {
 	struct eigrp_neighbor *nbr;
+	struct eigrp *eigrp;
 
 	nbr = THREAD_ARG(thread);
+	eigrp = nbr->ei->eigrp;
 
 	zlog_info("Neighbor %s (%s) is down: holding time expired",
 		  inet_ntoa(nbr->src),
-		  ifindex2ifname(nbr->ei->ifp->ifindex, VRF_DEFAULT));
+		  ifindex2ifname(nbr->ei->ifp->ifindex,
+				 eigrp->vrf_id));
 	nbr->state = EIGRP_NEIGHBOR_DOWN;
 	eigrp_nbr_delete(nbr);
 
@@ -334,23 +337,29 @@ int eigrp_nbr_count_get(void)
  */
 void eigrp_nbr_hard_restart(struct eigrp_neighbor *nbr, struct vty *vty)
 {
+	struct eigrp *eigrp;
+	struct eigrp_interface *ei;
+
 	if (nbr == NULL) {
 		zlog_err("Nbr Hard restart: Neighbor not specified.");
 		return;
 	}
 
+	ei = nbr->ei;
+	eigrp = ei->eigrp;
+
 	zlog_debug("Neighbor %s (%s) is down: manually cleared",
 		   inet_ntoa(nbr->src),
-		   ifindex2ifname(nbr->ei->ifp->ifindex, VRF_DEFAULT));
+		   ifindex2ifname(ei->ifp->ifindex, eigrp->vrf_id));
 	if (vty != NULL) {
 		vty_time_print(vty, 0);
 		vty_out(vty, "Neighbor %s (%s) is down: manually cleared\n",
 			inet_ntoa(nbr->src),
-			ifindex2ifname(nbr->ei->ifp->ifindex, VRF_DEFAULT));
+			ifindex2ifname(ei->ifp->ifindex, eigrp->vrf_id));
 	}
 
 	/* send Hello with Peer Termination TLV */
-	eigrp_hello_send(nbr->ei, EIGRP_HELLO_GRACEFUL_SHUTDOWN_NBR,
+	eigrp_hello_send(ei, EIGRP_HELLO_GRACEFUL_SHUTDOWN_NBR,
 			 &(nbr->src));
 	/* set neighbor to DOWN */
 	nbr->state = EIGRP_NEIGHBOR_DOWN;

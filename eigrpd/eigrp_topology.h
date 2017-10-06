@@ -40,8 +40,9 @@ extern struct eigrp_nexthop_entry *eigrp_nexthop_entry_new(void);
 extern void eigrp_topology_free(struct list *);
 extern void eigrp_topology_cleanup(struct list *);
 extern void eigrp_prefix_entry_add(struct list *, struct eigrp_prefix_entry *);
-extern void eigrp_nexthop_entry_add(struct eigrp_prefix_entry *,
-				     struct eigrp_nexthop_entry *);
+extern void eigrp_nexthop_entry_add(struct eigrp *eigrp,
+				    struct eigrp_prefix_entry *pe,
+				    struct eigrp_nexthop_entry *ne);
 extern void eigrp_prefix_entry_delete(struct list *,
 				      struct eigrp_prefix_entry *);
 extern void eigrp_nexthop_entry_delete(struct eigrp_prefix_entry *,

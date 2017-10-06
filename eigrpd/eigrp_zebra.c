@@ -64,7 +64,6 @@ static int eigrp_interface_state_up(int, struct zclient *, zebra_size_t,
 				    vrf_id_t vrf_id);
 static int eigrp_interface_state_down(int, struct zclient *, zebra_size_t,
 				      vrf_id_t vrf_id);
-static struct interface *zebra_interface_if_lookup(struct stream *);
 
 static int eigrp_zebra_read_route(int, struct zclient *, zebra_size_t,
 				  vrf_id_t vrf_id);
@@ -255,7 +254,7 @@ static int eigrp_interface_state_up(int command, struct zclient *zclient,
 {
 	struct interface *ifp;
 
-	ifp = zebra_interface_if_lookup(zclient->ibuf);
+	ifp = zebra_interface_add_read(zclient->ibuf, vrf_id);
 
 	if (ifp == NULL)
 		return 0;
@@ -327,18 +326,8 @@ static int eigrp_interface_state_down(int command, struct zclient *zclient,
 	return 0;
 }
 
-static struct interface *zebra_interface_if_lookup(struct stream *s)
-{
-	char ifname_tmp[INTERFACE_NAMSIZ];
-
-	/* Read interface name. */
-	stream_get(ifname_tmp, s, INTERFACE_NAMSIZ);
-
-	/* And look it up. */
-	return if_lookup_by_name(ifname_tmp, VRF_DEFAULT);
-}
-
-void eigrp_zebra_route_add(struct prefix *p, struct list *successors)
+void eigrp_zebra_route_add(struct eigrp *eigrp,
+			   struct prefix *p, struct list *successors)
 {
 	struct zapi_route api;
 	struct zapi_nexthop *api_nh;
@@ -350,7 +339,7 @@ void eigrp_zebra_route_add(struct prefix *p, struct list *successors)
 		return;
 
 	memset(&api, 0, sizeof(api));
-	api.vrf_id = VRF_DEFAULT;
+	api.vrf_id = eigrp->vrf_id;
 	api.type = ZEBRA_ROUTE_EIGRP;
 	api.safi = SAFI_UNICAST;
 	memcpy(&api.prefix, p, sizeof(*p));
@@ -383,7 +372,7 @@ void eigrp_zebra_route_add(struct prefix *p, struct list *successors)
 	zclient_route_send(ZEBRA_ROUTE_ADD, zclient, &api);
 }
 
-void eigrp_zebra_route_delete(struct prefix *p)
+void eigrp_zebra_route_delete(struct eigrp *eigrp, struct prefix *p)
 {
 	struct zapi_route api;
 
@@ -391,7 +380,7 @@ void eigrp_zebra_route_delete(struct prefix *p)
 		return;
 
 	memset(&api, 0, sizeof(api));
-	api.vrf_id = VRF_DEFAULT;
+	api.vrf_id = eigrp->vrf_id;
 	api.type = ZEBRA_ROUTE_EIGRP;
 	api.safi = SAFI_UNICAST;
 	memcpy(&api.prefix, p, sizeof(*p));
@@ -406,20 +395,20 @@ void eigrp_zebra_route_delete(struct prefix *p)
 	return;
 }
 
-int eigrp_is_type_redistributed(int type)
+static int eigrp_is_type_redistributed(struct eigrp *eigrp, int type)
 {
 	return ((DEFAULT_ROUTE_TYPE(type))
 			? vrf_bitmap_check(zclient->default_information,
-					   VRF_DEFAULT)
+					   eigrp->vrf_id)
 			: vrf_bitmap_check(zclient->redist[AFI_IP][type],
-					   VRF_DEFAULT));
+					   eigrp->vrf_id));
 }
 
 int eigrp_redistribute_set(struct eigrp *eigrp, int type,
 			   struct eigrp_metrics metric)
 {
 
-	if (eigrp_is_type_redistributed(type)) {
+	if (eigrp_is_type_redistributed(eigrp, type)) {
 		if (eigrp_metrics_is_same(metric, eigrp->dmetric[type])) {
 			eigrp->dmetric[type] = metric;
 		}
@@ -438,7 +427,7 @@ int eigrp_redistribute_set(struct eigrp *eigrp, int type,
 	eigrp->dmetric[type] = metric;
 
 	zclient_redistribute(ZEBRA_REDISTRIBUTE_ADD, zclient, AFI_IP, type, 0,
-			     VRF_DEFAULT);
+			     eigrp->vrf_id);
 
 	++eigrp->redistribute;
 
@@ -448,10 +437,10 @@ int eigrp_redistribute_set(struct eigrp *eigrp, int type,
 int eigrp_redistribute_unset(struct eigrp *eigrp, int type)
 {
 
-	if (eigrp_is_type_redistributed(type)) {
+	if (eigrp_is_type_redistributed(eigrp, type)) {
 		memset(&eigrp->dmetric[type], 0, sizeof(struct eigrp_metrics));
 		zclient_redistribute(ZEBRA_REDISTRIBUTE_DELETE, zclient, AFI_IP,
-				     type, 0, VRF_DEFAULT);
+				     type, 0, eigrp->vrf_id);
 		--eigrp->redistribute;
 	}
 

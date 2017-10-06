@@ -74,8 +74,6 @@ const struct message eigrp_packet_type_str[] = {
 static unsigned char zeropad[16] = {0};
 
 /* Forward function reference*/
-static struct stream *eigrp_recv_packet(int, struct interface **,
-					struct stream *);
 static int eigrp_verify_header(struct stream *, struct eigrp_interface *,
 			       struct ip *, struct eigrp_header *);
 static int eigrp_check_network_mask(struct eigrp_interface *, struct in_addr);
@@ -460,6 +458,91 @@ int eigrp_write(struct thread *thread)
 	return 0;
 }
 
+static struct stream *eigrp_recv_packet(struct eigrp *eigrp,
+					struct interface **ifp)
+{
+	int fd = eigrp->fd;
+	struct stream *ibuf = eigrp->ibuf;
+	int ret;
+	struct ip *iph;
+	u_int16_t ip_len;
+	unsigned int ifindex = 0;
+	struct iovec iov;
+	/* Header and data both require alignment. */
+	char buff[CMSG_SPACE(SOPT_SIZE_CMSG_IFINDEX_IPV4())];
+	struct msghdr msgh;
+
+	memset(&msgh, 0, sizeof(struct msghdr));
+	msgh.msg_iov = &iov;
+	msgh.msg_iovlen = 1;
+	msgh.msg_control = (caddr_t)buff;
+	msgh.msg_controllen = sizeof(buff);
+
+	ret = stream_recvmsg(ibuf, fd, &msgh, 0, (EIGRP_PACKET_MAX_LEN + 1));
+	if (ret < 0) {
+		zlog_warn("stream_recvmsg failed: %s", safe_strerror(errno));
+		return NULL;
+	}
+	/* ret must be > 0 now */
+	if ((unsigned int)ret < sizeof(iph)) {
+		zlog_warn(
+			"%s: discarding runt packet of length %d (ip header size is %u)",
+			__PRETTY_FUNCTION__,
+			ret, (u_int)sizeof(iph));
+		return NULL;
+	}
+
+	/*
+	 * Note that there should not be alignment problems with
+	 * this assignment because this is at the beginning of the
+	 * stream data buffer.
+	 */
+	iph = (struct ip *)STREAM_DATA(ibuf);
+	sockopt_iphdrincl_swab_systoh(iph);
+
+	ip_len = iph->ip_len;
+
+#if !defined(GNU_LINUX) && (OpenBSD < 200311) && (__FreeBSD_version < 1000000)
+	/*
+	 * Kernel network code touches incoming IP header parameters,
+	 * before protocol specific processing.
+	 *
+	 *   1) Convert byteorder to host representation.
+	 *      --> ip_len, ip_id, ip_off
+	 *
+	 *   2) Adjust ip_len to strip IP header size!
+	 *      --> If user process receives entire IP packet via RAW
+	 *          socket, it must consider adding IP header size to
+	 *          the "ip_len" field of "ip" structure.
+	 *
+	 * For more details, see <netinet/ip_input.c>.
+	 */
+	ip_len = ip_len + (iph->ip_hl << 2);
+#endif
+
+#if defined(__DragonFly__)
+	/*
+	 * in DragonFly's raw socket, ip_len/ip_off are read
+	 * in network byte order.
+	 * As OpenBSD < 200311 adjust ip_len to strip IP header size!
+	 */
+	ip_len = ntohs(iph->ip_len) + (iph->ip_hl << 2);
+#endif
+
+	ifindex = getsockopt_ifindex(AF_INET, &msgh);
+
+	*ifp = if_lookup_by_index(ifindex, eigrp->vrf_id);
+
+	if (ret != ip_len) {
+		zlog_warn("%s: read length mismatch: ip_len is %d, but recvmsg returned %d",
+			  __PRETTY_FUNCTION__,
+			  ip_len, ret);
+		return NULL;
+	}
+
+	return ibuf;
+}
+
 /* Starting point of packet process function. */
 int eigrp_read(struct thread *thread)
 {
@@ -483,7 +566,8 @@ int eigrp_read(struct thread *thread)
 	thread_add_read(master, eigrp_read, eigrp, eigrp->fd, &eigrp->t_read);
 
 	stream_reset(eigrp->ibuf);
-	if (!(ibuf = eigrp_recv_packet(eigrp->fd, &ifp, eigrp->ibuf))) {
+	ibuf = eigrp_recv_packet(eigrp, &ifp);
+	if (!ibuf) {
 		/* This raw packet is known to be at least as big as its IP
 		 * header. */
 		return -1;
@@ -513,7 +597,7 @@ int eigrp_read(struct thread *thread)
 		   ifindex
 		   retrieval but do not. */
 		c = if_lookup_address((void *)&iph->ip_src, AF_INET,
-				      VRF_DEFAULT);
+				      eigrp->vrf_id);
 
 		if (c == NULL)
 			return 0;
@@ -691,87 +775,6 @@ int eigrp_read(struct thread *thread)
 	}
 
 	return 0;
-}
-
-static struct stream *eigrp_recv_packet(int fd, struct interface **ifp,
-					struct stream *ibuf)
-{
-	int ret;
-	struct ip *iph;
-	u_int16_t ip_len;
-	unsigned int ifindex = 0;
-	struct iovec iov;
-	/* Header and data both require alignment. */
-	char buff[CMSG_SPACE(SOPT_SIZE_CMSG_IFINDEX_IPV4())];
-	struct msghdr msgh;
-
-	memset(&msgh, 0, sizeof(struct msghdr));
-	msgh.msg_iov = &iov;
-	msgh.msg_iovlen = 1;
-	msgh.msg_control = (caddr_t)buff;
-	msgh.msg_controllen = sizeof(buff);
-
-	ret = stream_recvmsg(ibuf, fd, &msgh, 0, (EIGRP_PACKET_MAX_LEN + 1));
-	if (ret < 0) {
-		zlog_warn("stream_recvmsg failed: %s", safe_strerror(errno));
-		return NULL;
-	}
-	if ((unsigned int)ret < sizeof(iph)) /* ret must be > 0 now */
-	{
-		zlog_warn(
-			"eigrp_recv_packet: discarding runt packet of length %d "
-			"(ip header size is %u)",
-			ret, (u_int)sizeof(iph));
-		return NULL;
-	}
-
-	/* Note that there should not be alignment problems with this assignment
-	   because this is at the beginning of the stream data buffer. */
-	iph = (struct ip *)STREAM_DATA(ibuf);
-	sockopt_iphdrincl_swab_systoh(iph);
-
-	ip_len = iph->ip_len;
-
-#if !defined(GNU_LINUX) && (OpenBSD < 200311) && (__FreeBSD_version < 1000000)
-	/*
-	 * Kernel network code touches incoming IP header parameters,
-	 * before protocol specific processing.
-	 *
-	 *   1) Convert byteorder to host representation.
-	 *      --> ip_len, ip_id, ip_off
-	 *
-	 *   2) Adjust ip_len to strip IP header size!
-	 *      --> If user process receives entire IP packet via RAW
-	 *          socket, it must consider adding IP header size to
-	 *          the "ip_len" field of "ip" structure.
-	 *
-	 * For more details, see <netinet/ip_input.c>.
-	 */
-	ip_len = ip_len + (iph->ip_hl << 2);
-#endif
-
-#if defined(__DragonFly__)
-	/*
-	 * in DragonFly's raw socket, ip_len/ip_off are read
-	 * in network byte order.
-	 * As OpenBSD < 200311 adjust ip_len to strip IP header size!
-	 */
-	ip_len = ntohs(iph->ip_len) + (iph->ip_hl << 2);
-#endif
-
-	ifindex = getsockopt_ifindex(AF_INET, &msgh);
-
-	*ifp = if_lookup_by_index(ifindex, VRF_DEFAULT);
-
-	if (ret != ip_len) {
-		zlog_warn(
-			"eigrp_recv_packet read length mismatch: ip_len is %d, "
-			"but recvmsg returned %d",
-			ip_len, ret);
-		return NULL;
-	}
-
-	return ibuf;
 }
 
 struct eigrp_fifo *eigrp_fifo_new(void)
