@@ -69,6 +69,8 @@ struct eigrp_metrics {
 };
 
 struct eigrp {
+	vrf_id_t  vrf_id;
+
 	u_int16_t AS;       /* Autonomous system number */
 	u_int16_t vrid;     /* Virtual Router ID */
 	u_char k_values[6]; /*Array for K values configuration*/

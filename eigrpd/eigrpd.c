@@ -29,6 +29,7 @@
 
 #include "thread.h"
 #include "vty.h"
+#include "vrf.h"
 #include "command.h"
 #include "linklist.h"
 #include "prefix.h"
@@ -62,7 +63,7 @@ static struct eigrp_master eigrp_master;
 struct eigrp_master *eigrp_om;
 
 static void eigrp_delete(struct eigrp *);
-static struct eigrp *eigrp_new(const char *);
+static struct eigrp *eigrp_new(const char *, vrf_id_t vrf);
 static void eigrp_add(struct eigrp *);
 
 extern struct zclient *zclient;
@@ -135,10 +136,12 @@ void eigrp_master_init()
 }
 
 /* Allocate new eigrp structure. */
-static struct eigrp *eigrp_new(const char *AS)
+static struct eigrp *eigrp_new(const char *AS, vrf_id_t vrf_id)
 {
 	struct eigrp *eigrp = XCALLOC(MTYPE_EIGRP_TOP, sizeof(struct eigrp));
 	int eigrp_socket;
+
+	eigrp->vrf_id = vrf_id;
 
 	/* init information relevant to peers */
 	eigrp->vrid = 0;
@@ -223,7 +226,7 @@ struct eigrp *eigrp_get(const char *AS)
 
 	eigrp = eigrp_lookup();
 	if (eigrp == NULL) {
-		eigrp = eigrp_new(AS);
+		eigrp = eigrp_new(AS, VRF_DEFAULT);
 		eigrp_add(eigrp);
 	}
 
