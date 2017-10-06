@@ -99,6 +99,9 @@
 
 /* RIP structure. */
 struct rip {
+	/* The vrf_id we are operating in */
+	vrf_id_t vrf_id;
+
 	/* RIP socket. */
 	int sock;
 

@@ -336,7 +336,7 @@ static int rip_if_ipv4_address_check(struct interface *ifp)
 /* Does this address belongs to me ? */
 int if_check_address(struct in_addr addr)
 {
-	struct vrf *vrf = vrf_lookup_by_id(VRF_DEFAULT);
+	struct vrf *vrf = vrf_lookup_by_id(rip->vrf_id);
 	struct interface *ifp;
 
 	RB_FOREACH (ifp, if_name_head, &vrf->ifaces_by_name) {
@@ -490,7 +490,7 @@ static void rip_interface_clean(struct rip_interface *ri)
 
 void rip_interfaces_clean(void)
 {
-	struct vrf *vrf = vrf_lookup_by_id(VRF_DEFAULT);
+	struct vrf *vrf = vrf_lookup_by_id(rip->vrf_id);
 	struct interface *ifp;
 
 	RB_FOREACH (ifp, if_name_head, &vrf->ifaces_by_name)
@@ -542,7 +542,7 @@ static void rip_interface_reset(struct rip_interface *ri)
 
 void rip_interfaces_reset(void)
 {
-	struct vrf *vrf = vrf_lookup_by_id(VRF_DEFAULT);
+	struct vrf *vrf = vrf_lookup_by_id(rip->vrf_id);
 	struct interface *ifp;
 
 	RB_FOREACH (ifp, if_name_head, &vrf->ifaces_by_name)
@@ -583,7 +583,7 @@ int rip_if_down(struct interface *ifp)
 /* Needed for stop RIP process. */
 void rip_if_down_all()
 {
-	struct vrf *vrf = vrf_lookup_by_id(VRF_DEFAULT);
+	struct vrf *vrf = vrf_lookup_by_id(rip->vrf_id);
 	struct interface *ifp;
 
 	RB_FOREACH (ifp, if_name_head, &vrf->ifaces_by_name)
@@ -977,7 +977,7 @@ void rip_enable_apply(struct interface *ifp)
 /* Apply network configuration to all interface. */
 void rip_enable_apply_all()
 {
-	struct vrf *vrf = vrf_lookup_by_id(VRF_DEFAULT);
+	struct vrf *vrf = vrf_lookup_by_id(rip->vrf_id);
 	struct interface *ifp;
 
 	/* Check each interface. */
@@ -1091,7 +1091,7 @@ void rip_passive_interface_apply(struct interface *ifp)
 
 static void rip_passive_interface_apply_all(void)
 {
-	struct vrf *vrf = vrf_lookup_by_id(VRF_DEFAULT);
+	struct vrf *vrf = vrf_lookup_by_id(rip->vrf_id);
 	struct interface *ifp;
 
 	RB_FOREACH (ifp, if_name_head, &vrf->ifaces_by_name)
@@ -1728,7 +1728,7 @@ DEFUN (no_rip_passive_interface,
 /* Write rip configuration of each interface. */
 static int rip_interface_config_write(struct vty *vty)
 {
-	struct vrf *vrf = vrf_lookup_by_id(VRF_DEFAULT);
+	struct vrf *vrf = vrf_lookup_by_id(rip->vrf_id);
 	struct interface *ifp;
 
 	RB_FOREACH (ifp, if_name_head, &vrf->ifaces_by_name) {
