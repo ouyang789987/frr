@@ -1,0 +1,73 @@
+{
+    "$schema": "http://json-schema.org/draft-04/schema#",
+    "definitions": {
+        "ipv4-prefix": {
+            "type": "object",
+            "properties": {
+                "address": {
+                    "type": "string",
+                    "format": "ipv4"
+                },
+                "prefix-length": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 32
+                }
+            },
+            "required": [
+                "address",
+                "prefix-length"
+            ]
+        },
+        "ipv6-prefix": {
+            "type": "object",
+            "properties": {
+                "address": {
+                    "type": "string",
+                    "format": "ipv6"
+                },
+                "prefix-length": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 128
+                }
+            },
+            "required": [
+                "address",
+                "prefix-length"
+            ]
+        },
+        "redistribute-sources-ipv4": {
+            "enum": [
+                "kernel",
+                "connected",
+                "static",
+                "rip",
+                "ospf",
+                "isis",
+                "bgp",
+                "pim",
+                "eigrp",
+                "nhrp",
+                "table",
+                "vnc",
+                "babel"
+            ]
+        },
+        "redistribute-sources-ipv6": {
+            "enum": [
+                "kernel",
+                "connected",
+                "static",
+                "ripng",
+                "ospf6",
+                "isis",
+                "bgp",
+                "nhrp",
+                "table",
+                "vnc",
+                "babel"
+            ]
+        }
+    }
+}

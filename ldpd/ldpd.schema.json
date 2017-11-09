@@ -1,0 +1,296 @@
+{
+    "title": "ldpd's configuration API",
+    "$schema": "http://json-schema.org/draft-04/schema#",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+        "ldp-process": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "address-families": {
+                    "$ref": "#/definitions/address-families"
+                },
+                "dual-stack-cisco-interop": {
+                    "type": "boolean",
+                    "default": false
+                },
+                "link-hello-holdtime": {
+                    "$ref": "#/definitions/link-hello-holdtime"
+                },
+                "link-hello-interval": {
+                    "$ref": "#/definitions/link-hello-interval"
+                },
+                "neighbors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/neighbor"
+                    },
+                    "uniqueItems": true
+                },
+                "router-id": {
+                    "type": "string",
+                    "format": "ipv4"
+                },
+                "targeted-hello-holdtime": {
+                    "$ref": "#/definitions/targeted-hello-holdtime"
+                },
+                "targeted-hello-interval": {
+                    "$ref": "#/definitions/targeted-hello-interval"
+                },
+                "transport-preference": {
+                    "enum": [
+                        "ipv4",
+                        "ipv6"
+                    ]
+                }
+            }
+        },
+        "l2vpns": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "bridge": {
+                    "type": "string",
+                    "format": "interface-name"
+                },
+                "interfaces": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "format": "interface-name"
+                    }
+                },
+                "mtu": {
+                    "type": "integer",
+                    "minimum": 512,
+                    "maximum": 65535,
+                    "default": 1500
+                },
+                "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                },
+                "pseudowires": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/pseudowire"
+                    }
+                },
+                "pw-type": {
+                    "enum": [
+                        "ethernet",
+                        "ethernet-tagged"
+                    ],
+                    "default": "ethernet"
+                }
+            }
+        }
+    },
+    "definitions": {
+        "address-families": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "ipv4": {
+                    "$ref": "#/definitions/address-family"
+                },
+                "ipv6": {
+                    "$ref": "#/definitions/address-family"
+                }
+            }
+        },
+        "address-family": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "explicit-null": {
+                    "type": "boolean",
+                    "default": false
+                },
+                "gtsm": {
+                    "type": "boolean",
+                    "default": true
+                },
+                "interfaces": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/interface"
+                    },
+                    "uniqueItems": true
+                },
+                "keepalive": {
+                    "minimum": 3,
+                    "maximum": 65535,
+                    "default": 180
+                },
+                "link-hello-holdtime": {
+                    "$ref": "#/definitions/link-hello-holdtime"
+                },
+                "link-hello-interval": {
+                    "$ref": "#/definitions/link-hello-interval"
+                },
+                "targeted-hello-accept": {
+                    "type": "boolean",
+                    "default": false
+                },
+                "targeted-hello-holdtime": {
+                    "$ref": "#/definitions/targeted-hello-holdtime"
+                },
+                "targeted-hello-interval": {
+                    "$ref": "#/definitions/targeted-hello-interval"
+                },
+                "targeted-neighbors": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "format": "ip"
+                    },
+                    "uniqueItems": true
+                },
+                "transport-address": {
+                    "type": "string",
+                    "format": "ip"
+                }
+            }
+        },
+        "interface": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "link-hello-holdtime": {
+                    "$ref": "#/definitions/link-hello-holdtime"
+                },
+                "link-hello-interval": {
+                    "$ref": "#/definitions/link-hello-interval"
+                },
+                "name": {
+                    "type": "string",
+                    "format": "interface-name"
+                }
+            },
+            "required": [
+                "name"
+            ]
+        },
+        "link-hello-holdtime": {
+            "type": "integer",
+            "minimum": 3,
+            "maximum": 65535,
+            "default": 15
+        },
+        "link-hello-interval": {
+            "type": "integer",
+            "minimum": 3,
+            "maximum": 65535,
+            "default": 5
+        },
+        "neighbor": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "gtsm": {
+                    "type": "boolean",
+                    "default": false
+                },
+                "gtsm-hops": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 255,
+                    "default": 1
+                },
+                "keepalive": {
+                    "type": "integer",
+                    "minimum": 3,
+                    "maximum": 65535
+                },
+                "lsr-id": {
+                    "type": "string",
+                    "format": "ipv4"
+                },
+                "password": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                }
+            },
+            "required": [
+                "lsr-id"
+            ],
+            "dependencies": {
+                "gtsm-hops": {
+                    "properties": {
+                        "gtsm": {
+                            "enum": [
+                                true
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "pseudowire": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "control-word": {
+                    "type": "boolean",
+                    "default": true
+                },
+                "name": {
+                    "type": "string",
+                    "format": "interface-name"
+                },
+                "neighbor-address": {
+                    "type": "string",
+                    "format": "ip"
+                },
+                "neighbor-lsr-id": {
+                    "type": "string",
+                    "format": "ipv4"
+                },
+                "pw-id": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 4294967295
+                },
+                "status-tlv": {
+                    "type": "boolean",
+                    "default": true
+                }
+            }
+        },
+        "targeted-hello-holdtime": {
+            "type": "integer",
+            "minimum": 3,
+            "maximum": 65535,
+            "default": 45
+        },
+        "targeted-hello-interval": {
+            "type": "integer",
+            "minimum": 3,
+            "maximum": 65535,
+            "default": 5
+        },
+        "targeted-neighbor": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "address": {
+                    "type": "string",
+                    "format": "ip"
+                },
+                "targeted-hello-holdtime": {
+                    "$ref": "#/definitions/targeted-hello-holdtime"
+                },
+                "targeted-hello-interval": {
+                    "$ref": "#/definitions/targeted-hello-interval"
+                }
+            },
+            "required": [
+                "address"
+            ]
+        }
+    }
+}

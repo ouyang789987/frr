@@ -1,0 +1,66 @@
+{
+    "ldp-process": {
+        "router-id": "1.1.1.1",
+        "transport-preference": "ipv4",
+        "address-families": {
+            "ipv4": {
+                "gtsm": false,
+                "transport-address": "1.1.1.1",
+                "targeted-hello-accept": false,
+                "targeted-neighbors": [
+                    "2.2.2.2",
+                    "3.3.3.3"
+                ]
+            },
+            "ipv6": {
+                "transport-address": "2001:DB8::1",
+                "explicit-null": true,
+                "keepalive": 60,
+                "interfaces": [
+                    {
+                        "name": "eth0",
+                        "link-hello-interval": 5,
+                        "link-hello-holdtime": 45
+                    },
+                    {
+                        "name": "eth1"
+                    }
+                ]
+            }
+        },
+        "neighbors": [
+            {
+                "lsr-id": "2.2.2.2",
+                "keepalive": 30,
+                "gtsm": true,
+                "gtsm-hops": 2,
+                "password": "opensourcerouting"
+            }
+        ]
+    },
+    "l2vpns": {
+        "name": "ENG",
+        "bridge": "bridge0",
+        "mtu": 1500,
+        "pw-type": "ethernet",
+        "interfaces": [
+            "stub0",
+            "stub1"
+        ],
+        "pseudowires": [
+            {
+                "name": "mpw0",
+                "neighbor-address": "2.2.2.2",
+                "pw-id": 100
+            },
+            {
+                "name": "mpw1",
+                "control-word": true,
+                "neighbor-lsr-id": "4.4.4.4",
+                "neighbor-address": "2001:DB8::4",
+                "pw-id": 5000,
+                "status-tlv": true
+            }
+        ]
+    }
+}

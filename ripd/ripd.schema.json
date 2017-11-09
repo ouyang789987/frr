@@ -1,0 +1,330 @@
+{
+    "title": "ripd's configuration API",
+    "$schema": "http://json-schema.org/draft-04/schema#",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+        "routing-process": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "allow-ecmp": {
+                    "type": "boolean",
+                    "default": false
+                },
+                "default-metric": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 16,
+                    "default": 1
+                },
+                "distance": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 255,
+                    "default": 0
+                },
+                "distance-per-prefix": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/distance-per-prefix"
+                    },
+                    "uniqueItems": true
+                },
+                "neighbors": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "format": "ipv4"
+                    },
+                    "uniqueItems": true
+                },
+                "networks": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "lib/common.schema.json#/definitions/ipv4-prefix"
+                    },
+                    "uniqueItems": true
+                },
+                "passive-default": {
+                    "type": "boolean",
+                    "default": false
+                },
+                "redistribute": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/redistribute"
+                    },
+                    "uniqueItems": true
+                },
+                "static-routes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "lib/common.schema.json#/definitions/ipv4-prefix"
+                    },
+                    "uniqueItems": true
+                },
+                "timer-garbage": {
+                    "type": "integer",
+                    "minimum": 5,
+                    "maximum": 2147483647,
+                    "default": 120
+                },
+                "timer-timeout": {
+                    "type": "integer",
+                    "minimum": 5,
+                    "maximum": 2147483647,
+                    "default": 180
+                },
+                "timer-update": {
+                    "type": "integer",
+                    "minimum": 5,
+                    "maximum": 2147483647,
+                    "default": 30
+                },
+                "version-recv": {
+                    "enum": [
+                        "v1",
+                        "v2",
+                        "v1/v2"
+                    ],
+                    "default": "v1/v2"
+                },
+                "version-send": {
+                    "enum": [
+                        "v1",
+                        "v2",
+                        "v1/v2"
+                    ],
+                    "default": "v2"
+                }
+            }
+        },
+        "interfaces": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "authentication": {
+                        "$ref": "#/definitions/interface-authentication"
+                    },
+                    "name": {
+                        "type": "string",
+                        "format": "interface-name"
+                    },
+                    "passive": {
+                        "type": "boolean",
+                        "default": false
+                    },
+                    "split-horizon": {
+                        "enum": [
+                            "disabled",
+                            "enabled",
+                            "poisoned-reverse"
+                        ],
+                        "default": "enabled"
+                    },
+                    "v2-broadcast": {
+                        "type": "boolean",
+                        "default": false
+                    },
+                    "version-recv": {
+                        "enum": [
+                            "unspecified",
+                            "v1",
+                            "v2",
+                            "v1/v2",
+                            "none"
+                        ],
+                        "default": "unspecified"
+                    },
+                    "version-send": {
+                        "enum": [
+                            "unspecified",
+                            "v1",
+                            "v2",
+                            "v1/v2",
+                            "none"
+                        ],
+                        "default": "unspecified"
+                    }
+                },
+                "uniqueItems": true,
+                "required": [
+                    "name"
+                ]
+            }
+        }
+    },
+    "definitions": {
+        "distance-per-prefix": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "access-list": {
+                    "type": "string",
+                    "minLength": 1
+                },
+                "distance": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 255
+                },
+                "prefix": {
+                    "$ref": "lib/common.schema.json#/definitions/ipv4-prefix"
+                }
+            },
+            "required": [
+                "distance",
+                "prefix"
+            ]
+        },
+        "interface-authentication": {
+            "type": "object",
+            "oneOf": [
+                {
+                    "$ref": "#/definitions/interface-authentication-none"
+                },
+                {
+                    "$ref": "#/definitions/interface-authentication-plain-text"
+                },
+                {
+                    "$ref": "#/definitions/interface-authentication-md5"
+                }
+            ],
+            "required": [
+                "type"
+            ]
+        },
+        "interface-authentication-none": {
+            "additionalProperties": false,
+            "properties": {
+                "type": {
+                    "enum": [
+                        "none"
+                    ]
+                }
+            }
+        },
+        "interface-authentication-plain-text": {
+            "additionalProperties": false,
+            "properties": {
+                "type": {
+                    "enum": [
+                        "plain-text"
+                    ]
+                },
+                "key-chain": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 16
+                },
+                "password": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 16
+                }
+            },
+            "oneOf": [
+                {
+                    "required": [
+                        "password"
+                    ]
+                },
+                {
+                    "required": [
+                        "key-chain"
+                    ]
+                }
+            ]
+        },
+        "interface-authentication-md5": {
+            "additionalProperties": false,
+            "properties": {
+                "type": {
+                    "enum": [
+                        "md5"
+                    ]
+                },
+                "key-chain": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 16
+                },
+                "md5-auth-lengh": {
+                    "enum": [
+                        16,
+                        20
+                    ],
+                    "default": 20
+                },
+                "password": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 16
+                }
+            },
+            "oneOf": [
+                {
+                    "required": [
+                        "password"
+                    ]
+                },
+                {
+                    "required": [
+                        "key-chain"
+                    ]
+                }
+            ]
+        },
+        "redistribute": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "instance": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 65535
+                },
+                "metric": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 16
+                },
+                "route-map": {
+                    "type": "string",
+                    "minLength": 1
+                },
+                "source": {
+                    "allOf": [
+                        {
+                            "$ref": "lib/common.schema.json#/definitions/redistribute-sources-ipv4"
+                        },
+                        {
+                            "not": {
+                                "enum": [
+                                    "rip"
+                                ]
+                            }
+                        }
+                    ]
+                }
+            },
+            "required": [
+                "source"
+            ],
+            "dependencies": {
+                "instance": {
+                    "properties": {
+                        "source": {
+                            "enum": [
+                                "ospf"
+                            ]
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
