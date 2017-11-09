@@ -1,0 +1,57 @@
+{
+    "routing-process": {
+        "allow-ecmp": true,
+        "default-metric": 2,
+        "distance": 100,
+        "distance-per-prefix": [
+            {
+                "distance": 50,
+                "prefix": {
+                    "address": "172.16.1.0",
+                    "prefix-length": 24
+                }
+            }
+        ],
+        "neighbors": [
+            "2.2.2.2",
+            "3.3.3.3"
+        ],
+        "networks": [
+            {
+                "address": "10.0.1.0",
+                "prefix-length": 24
+            },
+            {
+                "address": "10.0.2.0",
+                "prefix-length": 24
+            }
+        ],
+        "redistribute": [
+            {
+                "source": "ospf",
+                "instance": 5,
+                "route-map": "FILTER"
+            },
+            {
+                "source": "connected"
+            }
+        ],
+        "timer-update": 15,
+        "version-recv": "v1/v2",
+        "version-send": "v2"
+    },
+    "interfaces": [
+        {
+            "name": "eth0",
+            "authentication": {
+                "type": "plain-text",
+                "password": "frr"
+            },
+            "split-horizon": "poisoned-reverse"
+        },
+        {
+            "name": "eth1",
+            "passive": true
+        }
+    ]
+}
