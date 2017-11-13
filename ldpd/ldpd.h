@@ -799,6 +799,7 @@ const char	*pw_type_name(uint16_t);
 /* quagga */
 extern struct thread_master	*master;
 extern char			 ctl_sock_path[MAXPATHLEN];
+int ldpd_json_init(void);
 
 /* ldp_zebra.c */
 void		 ldp_zebra_init(struct thread_master *);

@@ -379,6 +379,8 @@ main(int argc, char *argv[])
 	if (ldpd_conf->ipv6.flags & F_LDPD_AF_ENABLED)
 		main_imsg_send_net_sockets(AF_INET6);
 
+	ldpd_json_init();
+
 	frr_run(master);
 
 	/* NOTREACHED */
@@ -1010,7 +1012,7 @@ ldp_config_normalize(struct ldpd_conf *xconf)
 				continue;
 
 			QOBJ_UNREG(iface);
-			RB_REMOVE(iface_head, &vty_conf->iface_tree, iface);
+			RB_REMOVE(iface_head, &xconf->iface_tree, iface);
 			free(iface);
 		}
 
@@ -1021,7 +1023,7 @@ ldp_config_normalize(struct ldpd_conf *xconf)
 				continue;
 
 			QOBJ_UNREG(nbrp);
-			RB_REMOVE(nbrp_head, &vty_conf->nbrp_tree, nbrp);
+			RB_REMOVE(nbrp_head, &xconf->nbrp_tree, nbrp);
 			free(nbrp);
 		}
 	}
