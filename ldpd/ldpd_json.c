@@ -49,8 +49,8 @@ int ldpd_afx_if_parse(struct json_object *jo, struct ldpd_conf *conf)
 	uint64_t lval;
 	int error = 0;
 
-	if (json_object_object_get_ex(jo, "name", &jo_val)) {
-		log_warnx("\t\t\t\tfailed to find neighbor lsr-id");
+	if (json_object_object_get_ex(jo, "name", &jo_val) != 1) {
+		log_warnx("\t\t\t\tfailed to find interface name");
 		return -1;
 	}
 
@@ -114,8 +114,8 @@ int ldpd_afx_addr_parse(int ipv4, struct json_object *jo,
 	const char *sval;
 	struct in6_addr in6;
 
-	if (json_object_object_get_ex(jo, "address", &jo_val)) {
-		log_warnx("\t\t\t\tfailed to find neighbor lsr-id");
+	if (json_object_object_get_ex(jo, "address", &jo_val) != 1) {
+		log_warnx("\t\t\t\tfailed to find neighbor address");
 		return -1;
 	}
 
@@ -331,19 +331,18 @@ int ldpd_nb_parse(struct json_object *jo, struct ldpd_conf *conf)
 	 * We need to get LSR-ID first to know where to store the
 	 * configuration.
 	 */
-	if (json_object_object_get_ex(jo, "lsr-id", &jo_val)) {
+	if (json_object_object_get_ex(jo, "lsr-id", &jo_val) != 1) {
 		log_warnx("\tfailed to find neighbor lsr-id");
 		return -1;
 	}
 
-	errno = 0;
-	lval = json_object_get_int64(jo_val);
-	if (lval == 0 && errno != 0) {
+	sval = json_object_get_string(jo_val);
+	if (inet_pton(AF_INET, sval, &in) != 1) {
 		log_warn(
 			"failed to convert "
 			"lsr-id");
+		return -1;
 	}
-	in.s_addr = htonl(ival);
 
 	nbrp = nbr_params_find(conf, in);
 	if (nbrp == NULL) {
@@ -352,7 +351,7 @@ int ldpd_nb_parse(struct json_object *jo, struct ldpd_conf *conf)
 		QOBJ_REG(nbrp, nbr_params);
 	}
 
-	log_debug("\t\tlsr-id: %#08x", (uint32_t)lval);
+	log_debug("\t\tlsr-id: %s", sval);
 
 	JSON_FOREACH (jo, joi, join) {
 		key = json_object_iter_peek_name(&joi);
@@ -514,7 +513,7 @@ int ldpd_global_parse(struct json_object *jo, struct ldpd_conf *conf)
 			continue;
 		} else if (strmatch(key, "address-families")) {
 			log_debug("\taddress-families:");
-			error += ldpd_af_parse(jo, conf);
+			error += ldpd_af_parse(jo_val, conf);
 			continue;
 		} else if (strmatch(key, "neighbors")) {
 			allen = json_object_array_length(jo_val);
