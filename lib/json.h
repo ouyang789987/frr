@@ -25,14 +25,14 @@
  * FRR style JSON iteration.
  * Usage: JSON_FOREACH(...) { ... }
  */
-#define JSON_FOREACH(jo, joi, join) \
-	/* struct json_object *jo; */ \
-	/* struct json_object_iterator joi; */ \
-	/* struct json_object_iterator join; */ \
-	for ((joi) = json_object_iter_begin((jo)), \
-		(join) = json_object_iter_end((jo)); \
-		json_object_iter_equal(&(joi), &(join)) == 0; \
-		json_object_iter_next(&(joi)))
+#define JSON_FOREACH(jo, joi, join)                                            \
+	/* struct json_object *jo; */                                          \
+	/* struct json_object_iterator joi; */                                 \
+	/* struct json_object_iterator join; */                                \
+	for ((joi) = json_object_iter_begin((jo)),                             \
+	    (join) = json_object_iter_end((jo));                               \
+	     json_object_iter_equal(&(joi), &(join)) == 0;                     \
+	     json_object_iter_next(&(joi)))
 
 #if defined(HAVE_JSON_C_JSON_H)
 #include <json-c/json.h>
@@ -43,7 +43,7 @@
  * json_object_to_json_string_ext is only available for json-c
  * so let's just turn it back to the original usage.
  */
-#define json_object_to_json_string_ext(A, B) json_object_to_json_string (A)
+#define json_object_to_json_string_ext(A, B) json_object_to_json_string(A)
 
 extern int json_object_object_get_ex(struct json_object *obj, const char *key,
 				     struct json_object **value);

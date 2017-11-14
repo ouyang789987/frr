@@ -41,14 +41,13 @@ int ldpd_nb_parse(struct json_object *, struct ldpd_conf *);
 int ldpd_global_parse(struct json_object *, struct ldpd_conf *);
 int json2ldpdconf(const char *, struct ldpd_conf *);
 
-int
-ldpd_afx_if_parse(struct json_object *jo, struct ldpd_conf *conf)
+int ldpd_afx_if_parse(struct json_object *jo, struct ldpd_conf *conf)
 {
-	struct json_object_iterator	joi, join;
-	const char			*key, *sval;
-	struct json_object		*jo_val;
-	uint64_t			lval;
-	int				error = 0;
+	struct json_object_iterator joi, join;
+	const char *key, *sval;
+	struct json_object *jo_val;
+	uint64_t lval;
+	int error = 0;
 
 	if (json_object_object_get_ex(jo, "name", &jo_val)) {
 		log_warnx("\t\t\t\tfailed to find neighbor lsr-id");
@@ -62,7 +61,7 @@ ldpd_afx_if_parse(struct json_object *jo, struct ldpd_conf *conf)
 
 	log_debug("\t\t\t\tname: %s", sval);
 
-	JSON_FOREACH(jo, joi, join) {
+	JSON_FOREACH (jo, joi, join) {
 		key = json_object_iter_peek_name(&joi);
 		jo_val = json_object_iter_peek_value(&joi);
 
@@ -71,8 +70,9 @@ ldpd_afx_if_parse(struct json_object *jo, struct ldpd_conf *conf)
 			lval = json_object_get_int64(jo_val);
 			if (lval == 0 && errno != 0) {
 				error++;
-				log_warn("failed to convert "
-						"link-hello-holdtime");
+				log_warn(
+					"failed to convert "
+					"link-hello-holdtime");
 				continue;
 			}
 
@@ -84,8 +84,9 @@ ldpd_afx_if_parse(struct json_object *jo, struct ldpd_conf *conf)
 			lval = json_object_get_int64(jo_val);
 			if (lval == 0 && errno != 0) {
 				error++;
-				log_warn("failed to convert "
-						"link-hello-interval");
+				log_warn(
+					"failed to convert "
+					"link-hello-interval");
 				continue;
 			}
 
@@ -106,12 +107,12 @@ ldpd_afx_if_parse(struct json_object *jo, struct ldpd_conf *conf)
 	return error;
 }
 
-int
-ldpd_afx_addr_parse(int ipv4, struct json_object *jo, struct ldpd_conf *conf)
+int ldpd_afx_addr_parse(int ipv4, struct json_object *jo,
+			struct ldpd_conf *conf)
 {
-	struct json_object		*jo_val;
-	const char			*sval;
-	struct in6_addr			in6;
+	struct json_object *jo_val;
+	const char *sval;
+	struct in6_addr in6;
 
 	if (json_object_object_get_ex(jo, "address", &jo_val)) {
 		log_warnx("\t\t\t\tfailed to find neighbor lsr-id");
@@ -130,21 +131,20 @@ ldpd_afx_addr_parse(int ipv4, struct json_object *jo, struct ldpd_conf *conf)
 	return 0;
 }
 
-int
-ldpd_afx_parse(int ipv4, struct json_object *jo, struct ldpd_conf *conf)
+int ldpd_afx_parse(int ipv4, struct json_object *jo, struct ldpd_conf *conf)
 {
-	struct json_object_iterator	joi, join;
-	const char			*key, *sval;
-	struct json_object		*jo_val, *jo_idx;
-	struct ldpd_af_conf		*afconf;
-	uint32_t			ival;
-	uint64_t			lval;
-	int				allen, idx;
-	int				error = 0;
+	struct json_object_iterator joi, join;
+	const char *key, *sval;
+	struct json_object *jo_val, *jo_idx;
+	struct ldpd_af_conf *afconf;
+	uint32_t ival;
+	uint64_t lval;
+	int allen, idx;
+	int error = 0;
 
 	afconf = (ipv4) ? &conf->ipv4 : &conf->ipv6;
 
-	JSON_FOREACH(jo, joi, join) {
+	JSON_FOREACH (jo, joi, join) {
 		key = json_object_iter_peek_name(&joi);
 		jo_val = json_object_iter_peek_value(&joi);
 
@@ -154,8 +154,8 @@ ldpd_afx_parse(int ipv4, struct json_object *jo, struct ldpd_conf *conf)
 				UNSET_FLAG(afconf->flags, F_LDPD_AF_NO_GTSM);
 			else
 				SET_FLAG(afconf->flags, F_LDPD_AF_NO_GTSM);
-			log_debug("\t\t\tgtsm: %s", (ival == 0) ?
-					"true" : "false");
+			log_debug("\t\t\tgtsm: %s",
+				  (ival == 0) ? "true" : "false");
 			continue;
 		} else if (strmatch(key, "explicit-null")) {
 			ival = json_object_get_boolean(jo_val);
@@ -163,16 +163,17 @@ ldpd_afx_parse(int ipv4, struct json_object *jo, struct ldpd_conf *conf)
 				SET_FLAG(afconf->flags, F_LDPD_AF_EXPNULL);
 			else
 				UNSET_FLAG(afconf->flags, F_LDPD_AF_EXPNULL);
-			log_debug("\t\t\texplicit-null: %s", (ival == 0) ?
-					"true" : "false");
+			log_debug("\t\t\texplicit-null: %s",
+				  (ival == 0) ? "true" : "false");
 			continue;
 		} else if (strmatch(key, "keepalive")) {
 			errno = 0;
 			lval = json_object_get_int64(jo_val);
 			if (lval == 0 && errno != 0) {
 				error++;
-				log_warn("failed to convert "
-						"keepalive");
+				log_warn(
+					"failed to convert "
+					"keepalive");
 				continue;
 			}
 
@@ -184,8 +185,9 @@ ldpd_afx_parse(int ipv4, struct json_object *jo, struct ldpd_conf *conf)
 			lval = json_object_get_int64(jo_val);
 			if (lval == 0 && errno != 0) {
 				error++;
-				log_warn("failed to convert "
-						"link-hello-holdtime");
+				log_warn(
+					"failed to convert "
+					"link-hello-holdtime");
 				continue;
 			}
 
@@ -197,8 +199,9 @@ ldpd_afx_parse(int ipv4, struct json_object *jo, struct ldpd_conf *conf)
 			lval = json_object_get_int64(jo_val);
 			if (lval == 0 && errno != 0) {
 				error++;
-				log_warn("failed to convert "
-						"link-hello-interval");
+				log_warn(
+					"failed to convert "
+					"link-hello-interval");
 				continue;
 			}
 
@@ -210,8 +213,9 @@ ldpd_afx_parse(int ipv4, struct json_object *jo, struct ldpd_conf *conf)
 			lval = json_object_get_int64(jo_val);
 			if (lval == 0 && errno != 0) {
 				error++;
-				log_warn("failed to convert "
-						"targeted-hello-holdtime");
+				log_warn(
+					"failed to convert "
+					"targeted-hello-holdtime");
 				continue;
 			}
 
@@ -223,8 +227,9 @@ ldpd_afx_parse(int ipv4, struct json_object *jo, struct ldpd_conf *conf)
 			lval = json_object_get_int64(jo_val);
 			if (lval == 0 && errno != 0) {
 				error++;
-				log_warn("failed to convert "
-						"targeted-hello-interval");
+				log_warn(
+					"failed to convert "
+					"targeted-hello-interval");
 				continue;
 			}
 
@@ -235,19 +240,22 @@ ldpd_afx_parse(int ipv4, struct json_object *jo, struct ldpd_conf *conf)
 			ival = json_object_get_boolean(jo_val);
 			if (!ival)
 				SET_FLAG(afconf->flags,
-						F_LDPD_AF_THELLO_ACCEPT);
+					 F_LDPD_AF_THELLO_ACCEPT);
 			else
 				UNSET_FLAG(afconf->flags,
-						F_LDPD_AF_THELLO_ACCEPT);
+					   F_LDPD_AF_THELLO_ACCEPT);
 			log_debug("\t\t\ttargeted-hello-accept: %s",
-					(ival == 0) ? "true" : "false");
+				  (ival == 0) ? "true" : "false");
 			continue;
 		} else if (strmatch(key, "transport-address")) {
 			sval = json_object_get_string(jo_val);
 			if (inet_pton(ipv4 ? AF_INET : AF_INET6, sval,
-					&afconf->trans_addr) != 1) {
-				log_warnx("failed to convert transport-address"
-						": %s", sval);
+				      &afconf->trans_addr)
+			    != 1) {
+				log_warnx(
+					"failed to convert transport-address"
+					": %s",
+					sval);
 				error++;
 			}
 			log_debug("\t\t\ttransport-address: %s", sval);
@@ -257,7 +265,8 @@ ldpd_afx_parse(int ipv4, struct json_object *jo, struct ldpd_conf *conf)
 			log_debug("\t\t\ttargeted-neighbors (%d):", allen);
 			for (idx = 0; idx < allen; idx++) {
 				jo_idx = json_object_array_get_idx(jo_val, idx);
-				error += ldpd_afx_addr_parse(ipv4, jo_idx, conf);
+				error +=
+					ldpd_afx_addr_parse(ipv4, jo_idx, conf);
 			}
 			continue;
 		} else if (strmatch(key, "interfaces")) {
@@ -278,15 +287,14 @@ ldpd_afx_parse(int ipv4, struct json_object *jo, struct ldpd_conf *conf)
 	return error;
 }
 
-int
-ldpd_af_parse(struct json_object *jo, struct ldpd_conf *conf)
+int ldpd_af_parse(struct json_object *jo, struct ldpd_conf *conf)
 {
-	struct json_object_iterator	joi, join;
-	const char			*key, *sval;
-	struct json_object		*jo_val;
-	int				error = 0;
+	struct json_object_iterator joi, join;
+	const char *key, *sval;
+	struct json_object *jo_val;
+	int error = 0;
 
-	JSON_FOREACH(jo, joi, join) {
+	JSON_FOREACH (jo, joi, join) {
 		key = json_object_iter_peek_name(&joi);
 		jo_val = json_object_iter_peek_value(&joi);
 
@@ -308,17 +316,16 @@ ldpd_af_parse(struct json_object *jo, struct ldpd_conf *conf)
 	return error;
 }
 
-int
-ldpd_nb_parse(struct json_object *jo, struct ldpd_conf *conf)
+int ldpd_nb_parse(struct json_object *jo, struct ldpd_conf *conf)
 {
-	struct json_object_iterator	joi, join;
-	const char			*key, *sval;
-	struct json_object		*jo_val;
-	struct nbr_params		*nbrp;
-	struct in_addr			in;
-	uint32_t			ival;
-	uint64_t			lval;
-	int				error = 0;
+	struct json_object_iterator joi, join;
+	const char *key, *sval;
+	struct json_object *jo_val;
+	struct nbr_params *nbrp;
+	struct in_addr in;
+	uint32_t ival;
+	uint64_t lval;
+	int error = 0;
 
 	/*
 	 * We need to get LSR-ID first to know where to store the
@@ -332,8 +339,9 @@ ldpd_nb_parse(struct json_object *jo, struct ldpd_conf *conf)
 	errno = 0;
 	lval = json_object_get_int64(jo_val);
 	if (lval == 0 && errno != 0) {
-		log_warn("failed to convert "
-				"lsr-id");
+		log_warn(
+			"failed to convert "
+			"lsr-id");
 	}
 	in.s_addr = htonl(ival);
 
@@ -346,23 +354,24 @@ ldpd_nb_parse(struct json_object *jo, struct ldpd_conf *conf)
 
 	log_debug("\t\tlsr-id: %#08x", (uint32_t)lval);
 
-	JSON_FOREACH(jo, joi, join) {
+	JSON_FOREACH (jo, joi, join) {
 		key = json_object_iter_peek_name(&joi);
 		jo_val = json_object_iter_peek_value(&joi);
 
 		if (strmatch(key, "gtsm")) {
 			ival = json_object_get_boolean(jo_val);
 			nbrp->gtsm_enabled = !ival;
-			log_debug("\t\tgtsm: %s", (ival == 0) ?
-					"true" : "false");
+			log_debug("\t\tgtsm: %s",
+				  (ival == 0) ? "true" : "false");
 			continue;
 		} else if (strmatch(key, "gtsm-hops")) {
 			errno = 0;
 			lval = json_object_get_int64(jo_val);
 			if (lval == 0 && errno != 0) {
 				error++;
-				log_warn("failed to convert "
-						"gtsm-hops");
+				log_warn(
+					"failed to convert "
+					"gtsm-hops");
 				continue;
 			}
 
@@ -374,8 +383,9 @@ ldpd_nb_parse(struct json_object *jo, struct ldpd_conf *conf)
 			lval = json_object_get_int64(jo_val);
 			if (lval == 0 && errno != 0) {
 				error++;
-				log_warn("failed to convert "
-						"keepalive");
+				log_warn(
+					"failed to convert "
+					"keepalive");
 				continue;
 			}
 
@@ -384,8 +394,9 @@ ldpd_nb_parse(struct json_object *jo, struct ldpd_conf *conf)
 			continue;
 		} else if (strmatch(key, "password")) {
 			sval = json_object_get_string(jo_val);
-			nbrp->auth.md5key_len = strlcpy(nbrp->auth.md5key,
-					sval, sizeof(nbrp->auth.md5key));
+			nbrp->auth.md5key_len =
+				strlcpy(nbrp->auth.md5key, sval,
+					sizeof(nbrp->auth.md5key));
 			log_debug("\t\tpassword: %s", nbrp->auth.md5key);
 			continue;
 		} else {
@@ -402,18 +413,17 @@ ldpd_nb_parse(struct json_object *jo, struct ldpd_conf *conf)
 	return error;
 }
 
-int
-ldpd_global_parse(struct json_object *jo, struct ldpd_conf *conf)
+int ldpd_global_parse(struct json_object *jo, struct ldpd_conf *conf)
 {
-	struct json_object_iterator	joi, join;
-	const char			*key, *sval;
-	struct json_object		*jo_val, *jo_idx;
-	uint32_t			ival;
-	uint64_t			lval;
-	int				allen, idx;
-	int				error = 0;
+	struct json_object_iterator joi, join;
+	const char *key, *sval;
+	struct json_object *jo_val, *jo_idx;
+	uint32_t ival;
+	uint64_t lval;
+	int allen, idx;
+	int error = 0;
 
-	JSON_FOREACH(jo, joi, join) {
+	JSON_FOREACH (jo, joi, join) {
 		key = json_object_iter_peek_name(&joi);
 		jo_val = json_object_iter_peek_value(&joi);
 
@@ -422,17 +432,19 @@ ldpd_global_parse(struct json_object *jo, struct ldpd_conf *conf)
 			if (ival == 0)
 				SET_FLAG(conf->flags, F_LDPD_DS_CISCO_INTEROP);
 			else
-				UNSET_FLAG(conf->flags, F_LDPD_DS_CISCO_INTEROP);
+				UNSET_FLAG(conf->flags,
+					   F_LDPD_DS_CISCO_INTEROP);
 			log_debug("\tdual-stack-cisco-interop: %s",
-					(ival == 0) ?  "true" : "false");
+				  (ival == 0) ? "true" : "false");
 			continue;
 		} else if (strmatch(key, "link-hello-holdtime")) {
 			errno = 0;
 			lval = json_object_get_int64(jo_val);
 			if (lval == 0 && errno != 0) {
 				error++;
-				log_warn("failed to convert "
-						"link-hello-holdtime");
+				log_warn(
+					"failed to convert "
+					"link-hello-holdtime");
 				continue;
 			}
 
@@ -444,8 +456,9 @@ ldpd_global_parse(struct json_object *jo, struct ldpd_conf *conf)
 			lval = json_object_get_int64(jo_val);
 			if (lval == 0 && errno != 0) {
 				error++;
-				log_warn("failed to convert "
-						"link-hello-interval");
+				log_warn(
+					"failed to convert "
+					"link-hello-interval");
 				continue;
 			}
 
@@ -457,8 +470,9 @@ ldpd_global_parse(struct json_object *jo, struct ldpd_conf *conf)
 			lval = json_object_get_int64(jo_val);
 			if (lval == 0 && errno != 0) {
 				error++;
-				log_warn("failed to convert "
-						"targeted-hello-holdtime");
+				log_warn(
+					"failed to convert "
+					"targeted-hello-holdtime");
 				continue;
 			}
 
@@ -470,8 +484,9 @@ ldpd_global_parse(struct json_object *jo, struct ldpd_conf *conf)
 			lval = json_object_get_int64(jo_val);
 			if (lval == 0 && errno != 0) {
 				error++;
-				log_warn("failed to convert "
-						"targeted-hello-interval");
+				log_warn(
+					"failed to convert "
+					"targeted-hello-interval");
 				continue;
 			}
 
@@ -492,8 +507,9 @@ ldpd_global_parse(struct json_object *jo, struct ldpd_conf *conf)
 			continue;
 		} else if (strmatch(key, "transport-preference")) {
 			sval = json_object_get_string(jo_val);
-			conf->trans_pref = strmatch(key, "ipv6") ?
-				DUAL_STACK_LDPOV6 : DUAL_STACK_LDPOV4;
+			conf->trans_pref = strmatch(key, "ipv6")
+						   ? DUAL_STACK_LDPOV6
+						   : DUAL_STACK_LDPOV4;
 			log_debug("\ttransport-preference: %s", sval);
 			continue;
 		} else if (strmatch(key, "address-families")) {
@@ -518,19 +534,18 @@ ldpd_global_parse(struct json_object *jo, struct ldpd_conf *conf)
 	return error;
 }
 
-int
-json2ldpdconf(const char *json, struct ldpd_conf *conf)
+int json2ldpdconf(const char *json, struct ldpd_conf *conf)
 {
-	struct json_object_iterator	joi, join;
-	const char			*key;
-	struct json_object		*jo, *jo_val;
-	int				error = 0;
+	struct json_object_iterator joi, join;
+	const char *key;
+	struct json_object *jo, *jo_val;
+	int error = 0;
 
 	jo = json_tokener_parse(json);
 	if (jo == NULL)
 		return -1;
 
-	JSON_FOREACH(jo, joi, join) {
+	JSON_FOREACH (jo, joi, join) {
 		key = json_object_iter_peek_name(&joi);
 		jo_val = json_object_iter_peek_value(&joi);
 
@@ -549,7 +564,7 @@ json2ldpdconf(const char *json, struct ldpd_conf *conf)
 
 /* json socket part */
 
-#define LJC_MAX_SIZE			67107840
+#define LJC_MAX_SIZE 67107840
 
 int ldpd_json_read(struct thread *);
 int ldpd_json_accept(struct thread *);
@@ -558,38 +573,36 @@ struct ldpd_json_conn;
 TAILQ_HEAD(ljc_head, ldpd_json_conn);
 
 struct ldpd_json_conn {
-	TAILQ_ENTRY(ldpd_json_conn)	entry;
-	struct ljc_head			*ljch;
-	struct thread			*t;
-	int				sd;
-	struct ibuf			*ibuf;
+	TAILQ_ENTRY(ldpd_json_conn) entry;
+	struct ljc_head *ljch;
+	struct thread *t;
+	int sd;
+	struct ibuf *ibuf;
 };
 
 struct ldpd_json_ctx {
-	struct thread			*t;
-	int				sd;
-	struct ljc_head			ljclist;
+	struct thread *t;
+	int sd;
+	struct ljc_head ljclist;
 };
 
-int
-ldpd_json_read(struct thread *t)
+int ldpd_json_read(struct thread *t)
 {
-	struct ldpd_json_conn	*ljc = THREAD_ARG(t);
-	ssize_t			tread;
-	int			nread;
-	char			*buf;
-	struct ldpd_conf	conf;
+	struct ldpd_json_conn *ljc = THREAD_ARG(t);
+	ssize_t tread;
+	int nread;
+	char *buf;
+	struct ldpd_conf conf;
 
 	if (ioctl(ljc->sd, FIONREAD, &nread) == -1) {
-		log_warn("%s: ioctl(FIONREAD): %s",
-				__FUNCTION__, strerror(errno));
+		log_warn("%s: ioctl(FIONREAD): %s", __FUNCTION__,
+			 strerror(errno));
 		return -1;
 	}
 
 	buf = ibuf_reserve(ljc->ibuf, nread);
 	if (buf == NULL) {
-		log_warn("%s: ibuf_reserve: %s",
-				__FUNCTION__, strerror(errno));
+		log_warn("%s: ibuf_reserve: %s", __FUNCTION__, strerror(errno));
 		return -1;
 	}
 
@@ -611,7 +624,7 @@ ldpd_json_read(struct thread *t)
 	if (json2ldpdconf((char *)ljc->ibuf->buf, &conf) == -1) {
 		/* TODO improve this */
 		log_warnx("%s: configuration incomplete or wrong",
-				__FUNCTION__);
+			  __FUNCTION__);
 		return -1;
 	}
 
@@ -630,14 +643,13 @@ ldpd_json_read(struct thread *t)
 	return 0;
 }
 
-int
-ldpd_json_accept(struct thread *t)
+int ldpd_json_accept(struct thread *t)
 {
-	struct ldpd_json_ctx	*ljctx = THREAD_ARG(t);
-	struct ldpd_json_conn	*ljc;
-	int			sd;
-	struct sockaddr_in	sin;
-	socklen_t		slen;
+	struct ldpd_json_ctx *ljctx = THREAD_ARG(t);
+	struct ldpd_json_conn *ljc;
+	int sd;
+	struct sockaddr_in sin;
+	socklen_t slen;
 
 	log_debug("new json connection");
 
@@ -650,7 +662,7 @@ ldpd_json_accept(struct thread *t)
 
 #if 1
 	{
-		char			buf[256];
+		char buf[256];
 		inet_ntop(AF_INET, &sin, buf, sizeof(buf));
 		log_debug("<- %s", buf);
 	}
@@ -680,12 +692,11 @@ ldpd_json_accept(struct thread *t)
 	return 0;
 }
 
-int
-ldpd_json_init(void)
+int ldpd_json_init(void)
 {
-	int			sd;
-	struct ldpd_json_ctx	*ljctx;
-	struct sockaddr_in	sin;
+	int sd;
+	struct ldpd_json_ctx *ljctx;
+	struct sockaddr_in sin;
 
 	ljctx = calloc(1, sizeof(*ljctx));
 	if (ljctx == NULL) {
