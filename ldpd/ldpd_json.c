@@ -651,6 +651,8 @@ int ldpd_json_read(struct thread *t)
 		return -1;
 	}
 
+	ldp_config_apply(NULL, conf);
+
 	ibuf_free(ljc->ibuf);
 
 	ljc->ibuf = ibuf_dynamic(65535, LJC_MAX_SIZE);
