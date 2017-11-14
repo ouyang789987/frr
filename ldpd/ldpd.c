@@ -1012,7 +1012,7 @@ ldp_config_normalize(struct ldpd_conf *xconf)
 				continue;
 
 			QOBJ_UNREG(iface);
-			RB_REMOVE(iface_head, &vty_conf->iface_tree, iface);
+			RB_REMOVE(iface_head, &xconf->iface_tree, iface);
 			free(iface);
 		}
 
@@ -1023,7 +1023,7 @@ ldp_config_normalize(struct ldpd_conf *xconf)
 				continue;
 
 			QOBJ_UNREG(nbrp);
-			RB_REMOVE(nbrp_head, &vty_conf->nbrp_tree, nbrp);
+			RB_REMOVE(nbrp_head, &xconf->nbrp_tree, nbrp);
 			free(nbrp);
 		}
 	}

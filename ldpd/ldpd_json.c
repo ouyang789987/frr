@@ -33,7 +33,7 @@
 #include "lib/json.h"
 #include "lib/openbsd-queue.h"
 
-int ldpd_afx_if_parse(struct json_object *, struct ldpd_conf *);
+int ldpd_afx_if_parse(int, struct json_object *, struct ldpd_conf *);
 int ldpd_afx_addr_parse(int, struct json_object *, struct ldpd_conf *);
 int ldpd_afx_parse(int, struct json_object *, struct ldpd_conf *);
 int ldpd_af_parse(struct json_object *, struct ldpd_conf *);
@@ -41,12 +41,14 @@ int ldpd_nb_parse(struct json_object *, struct ldpd_conf *);
 int ldpd_global_parse(struct json_object *, struct ldpd_conf *);
 int json2ldpdconf(const char *, struct ldpd_conf *);
 
-int ldpd_afx_if_parse(struct json_object *jo, struct ldpd_conf *conf)
+int ldpd_afx_if_parse(int af, struct json_object *jo, struct ldpd_conf *conf)
 {
 	struct json_object_iterator joi, join;
 	const char *key, *sval;
 	struct json_object *jo_val;
 	uint64_t lval;
+	struct iface *iface;
+	struct iface_af *ia;
 	int error = 0;
 
 	if (json_object_object_get_ex(jo, "name", &jo_val) != 1) {
@@ -55,9 +57,13 @@ int ldpd_afx_if_parse(struct json_object *jo, struct ldpd_conf *conf)
 	}
 
 	sval = json_object_get_string(jo_val);
-
-	/* TODO insert interface configuration */
-	conf = conf;
+	iface = if_lookup_name(conf, sval);
+	if (iface == NULL) {
+		iface = if_new(sval);
+		RB_INSERT(iface_head, &conf->iface_tree, iface);
+	}
+	ia = iface_af_get(iface, af);
+	ia->enabled = 1;
 
 	log_debug("\t\t\t\tname: %s", sval);
 
@@ -76,8 +82,8 @@ int ldpd_afx_if_parse(struct json_object *jo, struct ldpd_conf *conf)
 				continue;
 			}
 
-			/* TODO save link-hello-holdtime */
-			log_debug("\t\t\t\tlink-hello-holdtime: %lu", lval);
+			ia->hello_holdtime = lval;
+			log_debug("\t\t\t\t\tlink-hello-holdtime: %lu", lval);
 			continue;
 		} else if (strmatch(key, "link-hello-interval")) {
 			errno = 0;
@@ -90,8 +96,8 @@ int ldpd_afx_if_parse(struct json_object *jo, struct ldpd_conf *conf)
 				continue;
 			}
 
-			/* TODO save link-hello-interval */
-			log_debug("\t\t\t\tlink-hello-interval: %lu", lval);
+			ia->hello_interval = lval;
+			log_debug("\t\t\t\t\tlink-hello-interval: %lu", lval);
 			continue;
 		} else {
 			/* Handled outside the loop. */
@@ -107,12 +113,12 @@ int ldpd_afx_if_parse(struct json_object *jo, struct ldpd_conf *conf)
 	return error;
 }
 
-int ldpd_afx_addr_parse(int ipv4, struct json_object *jo,
-			struct ldpd_conf *conf)
+int ldpd_afx_addr_parse(int af, struct json_object *jo, struct ldpd_conf *conf)
 {
 	struct json_object *jo_val;
 	const char *sval;
-	struct in6_addr in6;
+	union ldpd_addr	addr;
+	struct tnbr *tnbr;
 
 	if (json_object_object_get_ex(jo, "address", &jo_val) != 1) {
 		log_warnx("\t\t\t\tfailed to find neighbor address");
@@ -120,18 +126,23 @@ int ldpd_afx_addr_parse(int ipv4, struct json_object *jo,
 	}
 
 	sval = json_object_get_string(jo_val);
-	if (inet_pton(ipv4 ? AF_INET : AF_INET6, sval, &in6) != 1) {
+	if (inet_pton(af, sval, &addr) != 1) {
 		log_warnx("\t\t\t\tfailed to convert address: %s", sval);
 		return -1;
 	}
 
-	/* TODO use value */
+	tnbr = tnbr_find(conf, af, &addr);
+	if (tnbr == NULL) {
+		tnbr = tnbr_new(af, &addr);
+		tnbr->flags |= F_TNBR_CONFIGURED;
+		RB_INSERT(tnbr_head, &conf->tnbr_tree, tnbr);
+	}
 
 	log_debug("\t\t\t\taddress: %s", sval);
 	return 0;
 }
 
-int ldpd_afx_parse(int ipv4, struct json_object *jo, struct ldpd_conf *conf)
+int ldpd_afx_parse(int af, struct json_object *jo, struct ldpd_conf *conf)
 {
 	struct json_object_iterator joi, join;
 	const char *key, *sval;
@@ -142,7 +153,8 @@ int ldpd_afx_parse(int ipv4, struct json_object *jo, struct ldpd_conf *conf)
 	int allen, idx;
 	int error = 0;
 
-	afconf = (ipv4) ? &conf->ipv4 : &conf->ipv6;
+	afconf = (af == AF_INET) ? &conf->ipv4 : &conf->ipv6;
+	SET_FLAG(afconf->flags, F_LDPD_AF_ENABLED);
 
 	JSON_FOREACH (jo, joi, join) {
 		key = json_object_iter_peek_name(&joi);
@@ -150,21 +162,20 @@ int ldpd_afx_parse(int ipv4, struct json_object *jo, struct ldpd_conf *conf)
 
 		if (strmatch(key, "gtsm")) {
 			ival = json_object_get_boolean(jo_val);
-			if (!ival)
+			if (ival)
 				UNSET_FLAG(afconf->flags, F_LDPD_AF_NO_GTSM);
 			else
 				SET_FLAG(afconf->flags, F_LDPD_AF_NO_GTSM);
-			log_debug("\t\t\tgtsm: %s",
-				  (ival == 0) ? "true" : "false");
+			log_debug("\t\t\tgtsm: %s", ival ? "true" : "false");
 			continue;
 		} else if (strmatch(key, "explicit-null")) {
 			ival = json_object_get_boolean(jo_val);
-			if (!ival)
+			if (ival)
 				SET_FLAG(afconf->flags, F_LDPD_AF_EXPNULL);
 			else
 				UNSET_FLAG(afconf->flags, F_LDPD_AF_EXPNULL);
 			log_debug("\t\t\texplicit-null: %s",
-				  (ival == 0) ? "true" : "false");
+				  ival ? "true" : "false");
 			continue;
 		} else if (strmatch(key, "keepalive")) {
 			errno = 0;
@@ -238,19 +249,18 @@ int ldpd_afx_parse(int ipv4, struct json_object *jo, struct ldpd_conf *conf)
 			continue;
 		} else if (strmatch(key, "targeted-hello-accept")) {
 			ival = json_object_get_boolean(jo_val);
-			if (!ival)
+			if (ival)
 				SET_FLAG(afconf->flags,
 					 F_LDPD_AF_THELLO_ACCEPT);
 			else
 				UNSET_FLAG(afconf->flags,
 					   F_LDPD_AF_THELLO_ACCEPT);
 			log_debug("\t\t\ttargeted-hello-accept: %s",
-				  (ival == 0) ? "true" : "false");
+				  ival ? "true" : "false");
 			continue;
 		} else if (strmatch(key, "transport-address")) {
 			sval = json_object_get_string(jo_val);
-			if (inet_pton(ipv4 ? AF_INET : AF_INET6, sval,
-				      &afconf->trans_addr)
+			if (inet_pton(af, sval, &afconf->trans_addr)
 			    != 1) {
 				log_warnx(
 					"failed to convert transport-address"
@@ -266,7 +276,7 @@ int ldpd_afx_parse(int ipv4, struct json_object *jo, struct ldpd_conf *conf)
 			for (idx = 0; idx < allen; idx++) {
 				jo_idx = json_object_array_get_idx(jo_val, idx);
 				error +=
-					ldpd_afx_addr_parse(ipv4, jo_idx, conf);
+					ldpd_afx_addr_parse(af, jo_idx, conf);
 			}
 			continue;
 		} else if (strmatch(key, "interfaces")) {
@@ -274,7 +284,7 @@ int ldpd_afx_parse(int ipv4, struct json_object *jo, struct ldpd_conf *conf)
 			log_debug("\t\t\tinterfaces (%d):", allen);
 			for (idx = 0; idx < allen; idx++) {
 				jo_idx = json_object_array_get_idx(jo_val, idx);
-				error += ldpd_afx_if_parse(jo_idx, conf);
+				error += ldpd_afx_if_parse(af, jo_idx, conf);
 			}
 			continue;
 		} else {
@@ -300,11 +310,11 @@ int ldpd_af_parse(struct json_object *jo, struct ldpd_conf *conf)
 
 		if (strmatch(key, "ipv4")) {
 			log_debug("\t\tipv4:");
-			error += ldpd_afx_parse(1, jo_val, conf);
+			error += ldpd_afx_parse(AF_INET, jo_val, conf);
 			continue;
 		} else if (strmatch(key, "ipv6")) {
 			log_debug("\t\tipv6:");
-			error += ldpd_afx_parse(0, jo_val, conf);
+			error += ldpd_afx_parse(AF_INET6, jo_val, conf);
 			continue;
 		} else {
 			error++;
@@ -348,7 +358,6 @@ int ldpd_nb_parse(struct json_object *jo, struct ldpd_conf *conf)
 	if (nbrp == NULL) {
 		nbrp = nbr_params_new(in);
 		RB_INSERT(nbrp_head, &conf->nbrp_tree, nbrp);
-		QOBJ_REG(nbrp, nbr_params);
 	}
 
 	log_debug("\t\tlsr-id: %s", sval);
@@ -359,9 +368,9 @@ int ldpd_nb_parse(struct json_object *jo, struct ldpd_conf *conf)
 
 		if (strmatch(key, "gtsm")) {
 			ival = json_object_get_boolean(jo_val);
-			nbrp->gtsm_enabled = !ival;
-			log_debug("\t\tgtsm: %s",
-				  (ival == 0) ? "true" : "false");
+			nbrp->gtsm_enabled = ival;
+			SET_FLAG(nbrp->flags, F_NBRP_GTSM);
+			log_debug("\t\tgtsm: %s", ival ? "true" : "false");
 			continue;
 		} else if (strmatch(key, "gtsm-hops")) {
 			errno = 0;
@@ -375,6 +384,7 @@ int ldpd_nb_parse(struct json_object *jo, struct ldpd_conf *conf)
 			}
 
 			nbrp->gtsm_hops = lval;
+			SET_FLAG(nbrp->flags, F_NBRP_GTSM_HOPS);
 			log_debug("\t\tgtsm-hops: %lu", lval);
 			continue;
 		} else if (strmatch(key, "keepalive")) {
@@ -389,6 +399,7 @@ int ldpd_nb_parse(struct json_object *jo, struct ldpd_conf *conf)
 			}
 
 			nbrp->keepalive = lval;
+			SET_FLAG(nbrp->flags, F_NBRP_KEEPALIVE);
 			log_debug("\t\tkeepalive: %lu", lval);
 			continue;
 		} else if (strmatch(key, "password")) {
@@ -396,6 +407,7 @@ int ldpd_nb_parse(struct json_object *jo, struct ldpd_conf *conf)
 			nbrp->auth.md5key_len =
 				strlcpy(nbrp->auth.md5key, sval,
 					sizeof(nbrp->auth.md5key));
+			nbrp->auth.method = AUTH_MD5SIG;
 			log_debug("\t\tpassword: %s", nbrp->auth.md5key);
 			continue;
 		} else {
@@ -422,19 +434,21 @@ int ldpd_global_parse(struct json_object *jo, struct ldpd_conf *conf)
 	int allen, idx;
 	int error = 0;
 
+	SET_FLAG(conf->flags, F_LDPD_ENABLED);
+
 	JSON_FOREACH (jo, joi, join) {
 		key = json_object_iter_peek_name(&joi);
 		jo_val = json_object_iter_peek_value(&joi);
 
 		if (strmatch(key, "dual-stack-cisco-interop")) {
 			ival = json_object_get_boolean(jo_val);
-			if (ival == 0)
+			if (ival)
 				SET_FLAG(conf->flags, F_LDPD_DS_CISCO_INTEROP);
 			else
 				UNSET_FLAG(conf->flags,
 					   F_LDPD_DS_CISCO_INTEROP);
 			log_debug("\tdual-stack-cisco-interop: %s",
-				  (ival == 0) ? "true" : "false");
+				  ival ? "true" : "false");
 			continue;
 		} else if (strmatch(key, "link-hello-holdtime")) {
 			errno = 0;
@@ -493,16 +507,16 @@ int ldpd_global_parse(struct json_object *jo, struct ldpd_conf *conf)
 			log_debug("\ttargeted-hello-interval: %lu", lval);
 			continue;
 		} else if (strmatch(key, "router-id")) {
-			errno = 0;
-			ival = json_object_get_int64(jo_val);
-			if (ival == 0 && errno != 0) {
+			sval = json_object_get_string(jo_val);
+			if (inet_pton(AF_INET, sval, &conf->rtr_id) != 1) {
 				error++;
-				log_warn("failed to convert router-id");
+				log_warnx(
+					"failed to convert router-id"
+					": %s",
+					sval);
 				continue;
 			}
-
-			conf->rtr_id.s_addr = htonl(ival);
-			log_debug("\trouter-id: %u", ival);
+			log_debug("\trouter-id: %s", sval);
 			continue;
 		} else if (strmatch(key, "transport-preference")) {
 			sval = json_object_get_string(jo_val);

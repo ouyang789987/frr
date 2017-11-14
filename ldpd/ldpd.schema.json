@@ -144,7 +144,8 @@
                 "targeted-neighbors": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/targeted-neighbor"
+                        "type": "string",
+                        "format": "ip"
                     },
                     "uniqueItems": true
                 },
