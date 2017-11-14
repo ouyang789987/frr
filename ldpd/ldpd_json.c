@@ -558,15 +558,12 @@ int json2ldpdconf(const char *json, struct ldpd_conf *conf)
 		}
 	}
 
-	return error;
+	return 0;
 }
 
 /* json socket part */
 
 #define LJC_MAX_SIZE 67107840
-
-int ldpd_json_read(struct thread *);
-int ldpd_json_accept(struct thread *);
 
 struct ldpd_json_conn;
 TAILQ_HEAD(ljc_head, ldpd_json_conn);
@@ -585,13 +582,35 @@ struct ldpd_json_ctx {
 	struct ljc_head ljclist;
 };
 
+void ljc_free(struct ldpd_json_conn *);
+int ldpd_json_read(struct thread *);
+int ldpd_json_accept(struct thread *);
+
+
+void ljc_free(struct ldpd_json_conn *ljc)
+{
+	ibuf_free(ljc->ibuf);
+	THREAD_READ_OFF(ljc->t);
+	close(ljc->sd);
+	TAILQ_REMOVE(ljc->ljch, ljc, entry);
+}
+
 int ldpd_json_read(struct thread *t)
 {
 	struct ldpd_json_conn *ljc = THREAD_ARG(t);
 	ssize_t tread;
 	int nread;
 	char *buf;
-	struct ldpd_conf conf;
+	struct ldpd_conf *conf;
+
+	ljc->t = NULL;
+	thread_add_read(master, ldpd_json_read, ljc, ljc->sd, &ljc->t);
+
+	conf = config_new_empty();
+	if (conf == NULL) {
+		log_warnx("%s: config_new_empty", __FUNCTION__);
+		return -1;
+	}
 
 	if (ioctl(ljc->sd, FIONREAD, &nread) == -1) {
 		log_warn("%s: ioctl(FIONREAD): %s", __FUNCTION__,
@@ -599,7 +618,14 @@ int ldpd_json_read(struct thread *t)
 		return -1;
 	}
 
-	buf = ibuf_reserve(ljc->ibuf, nread);
+	if (nread == 0) {
+		ljc_free(ljc);
+		return -1;
+	}
+
+	log_debug("%s: expecting %d bytes", __FUNCTION__, nread);
+
+	buf = ibuf_reserve(ljc->ibuf, nread + 1);
 	if (buf == NULL) {
 		log_warn("%s: ibuf_reserve: %s", __FUNCTION__, strerror(errno));
 		return -1;
@@ -609,10 +635,7 @@ int ldpd_json_read(struct thread *t)
 	while (tread < nread) {
 		if (tread <= 0) {
 			log_warn("%s: socket closed", __FUNCTION__);
-			ibuf_free(ljc->ibuf);
-			THREAD_READ_OFF(ljc->t);
-			close(ljc->sd);
-			TAILQ_REMOVE(ljc->ljch, ljc, entry);
+			ljc_free(ljc);
 			return -1;
 		}
 		buf += tread;
@@ -620,10 +643,11 @@ int ldpd_json_read(struct thread *t)
 		tread = recv(ljc->sd, buf, nread, MSG_DONTWAIT);
 	}
 
-	if (json2ldpdconf((char *)ljc->ibuf->buf, &conf) == -1) {
+	if (json2ldpdconf((char *)ljc->ibuf->buf, conf) == -1) {
 		/* TODO improve this */
 		log_warnx("%s: configuration incomplete or wrong",
 			  __FUNCTION__);
+		ljc_free(ljc);
 		return -1;
 	}
 
@@ -631,11 +655,7 @@ int ldpd_json_read(struct thread *t)
 
 	ljc->ibuf = ibuf_dynamic(65535, LJC_MAX_SIZE);
 	if (ljc->ibuf == NULL) {
-		log_warn("%s: socket closed", __FUNCTION__);
-		ibuf_free(ljc->ibuf);
-		THREAD_READ_OFF(ljc->t);
-		close(ljc->sd);
-		TAILQ_REMOVE(ljc->ljch, ljc, entry);
+		ljc_free(ljc);
 		return -1;
 	}
 
@@ -650,7 +670,8 @@ int ldpd_json_accept(struct thread *t)
 	struct sockaddr_in sin;
 	socklen_t slen;
 
-	log_debug("new json connection");
+	ljctx->t = NULL;
+	thread_add_read(master, ldpd_json_accept, ljctx, ljctx->sd, &ljctx->t);
 
 	slen = sizeof(sin);
 	sd = accept(ljctx->sd, &sin, &slen);
@@ -662,7 +683,7 @@ int ldpd_json_accept(struct thread *t)
 #if 1
 	{
 		char buf[256];
-		inet_ntop(AF_INET, &sin, buf, sizeof(buf));
+		inet_ntop(AF_INET, &sin.sin_addr, buf, sizeof(buf));
 		log_debug("<- %s", buf);
 	}
 #endif
@@ -715,7 +736,7 @@ int ldpd_json_init(void)
 
 	memset(&sin, 0, sizeof(sin));
 	sin.sin_family = AF_INET;
-	sin.sin_addr.s_addr = INADDR_LOOPBACK;
+	sin.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 	sin.sin_port = htons(12345);
 	if (bind(sd, &sin, sizeof(sin)) == -1) {
 		log_warn("failed to open json socket");
