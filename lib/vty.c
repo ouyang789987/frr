@@ -88,6 +88,9 @@ char *vty_cwd = NULL;
 static int vty_config;
 static int vty_config_is_lockless = 0;
 
+/* Exclusive configuration lock. */
+struct vty *vty_exclusive_lock;
+
 /* Login password check. */
 static int no_password_check = 0;
 
@@ -819,6 +822,8 @@ static void vty_end_config(struct vty *vty)
 		/* Unknown node, we have to ignore it. */
 		break;
 	}
+
+	vty->xpath_index = 0;
 
 	vty_prompt(vty);
 	vty->cp = 0;
@@ -2630,6 +2635,8 @@ int vty_config_lock(struct vty *vty)
 
 int vty_config_unlock(struct vty *vty)
 {
+	vty_config_exclusive_unlock(vty);
+
 	if (vty_config_is_lockless)
 		return 0;
 	if (vty_config == 1 && vty->config == 1) {
@@ -2642,6 +2649,21 @@ int vty_config_unlock(struct vty *vty)
 void vty_config_lockless(void)
 {
 	vty_config_is_lockless = 1;
+}
+
+int vty_config_exclusive_lock(struct vty *vty)
+{
+	if (vty_exclusive_lock == NULL) {
+		vty_exclusive_lock = vty;
+		return 1;
+	}
+	return 0;
+}
+
+void vty_config_exclusive_unlock(struct vty *vty)
+{
+	if (vty_exclusive_lock == vty)
+		vty_exclusive_lock = NULL;
 }
 
 /* Master of the threads. */

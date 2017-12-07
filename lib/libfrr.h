@@ -35,6 +35,11 @@
 #define FRR_NO_CFG_PID_DRY		(1 << 3)
 #define FRR_NO_ZCLIENT		(1 << 4)
 
+enum frr_cli_mode {
+	FRR_CLI_CLASSIC = 0,
+	FRR_CLI_TRANSACTIONAL,
+};
+
 struct frr_daemon_info {
 	unsigned flags;
 
@@ -50,11 +55,15 @@ struct frr_daemon_info {
 	bool dryrun;
 	bool daemon_mode;
 	bool terminal;
+	enum frr_cli_mode cli_mode;
 
 	struct thread *read_in;
 	const char *config_file;
 	const char *backup_config_file;
 	const char *pid_file;
+#ifdef HAVE_SQLITE3
+	const char *db_file;
+#endif
 	const char *vty_path;
 	const char *module_path;
 	const char *pathspace;
@@ -70,6 +79,9 @@ struct frr_daemon_info {
 	size_t n_signals;
 
 	struct zebra_privs_t *privs;
+
+	const char **yang_modules;
+	size_t n_yang_modules;
 };
 
 /* execname is the daemon's executable (and pidfile and configfile) name,
@@ -98,6 +110,8 @@ extern int frr_getopt(int argc, char *const argv[], int *longindex);
 extern void frr_help_exit(int status);
 
 extern struct thread_master *frr_init(void);
+extern const char *frr_get_progname(void);
+extern enum frr_cli_mode frr_get_cli_mode(void);
 
 DECLARE_HOOK(frr_late_init, (struct thread_master * tm), (tm))
 extern void frr_config_fork(void);

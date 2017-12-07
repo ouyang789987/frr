@@ -23,9 +23,11 @@ noinst_HEADERS =
 noinst_LIBRARIES =
 lib_LTLIBRARIES =
 module_LTLIBRARIES =
+libyang_plugins_LTLIBRARIES =
 pkginclude_HEADERS =
 nodist_pkginclude_HEADERS =
 dist_examples_DATA =
+yangmodels_DATA =
 
 ## libtool, the self-made GNU scourge
 ## ... this should fix relinking
@@ -34,6 +36,7 @@ dist_examples_DATA =
 $(AUTOMAKE_DUMMY)install-moduleLTLIBRARIES: install-libLTLIBRARIES
 $(AUTOMAKE_DUMMY)install-binPROGRAMS: install-libLTLIBRARIES
 $(AUTOMAKE_DUMMY)install-sbinPROGRAMS: install-libLTLIBRARIES
+$(AUTOMAKE_DUMMY)install-libyang_pluginsLTLIBRARIES: install-libLTLIBRARIES
 
 include include/subdir.am
 include lib/subdir.am
@@ -56,6 +59,8 @@ include eigrpd/subdir.am
 include sharpd/subdir.am
 include pimd/subdir.am
 include pbrd/subdir.am
+include yang/subdir.am
+include yang/libyang_plugins/subdir.am
 
 SUBDIRS = . @LIBRFP@ @RFPTEST@ \
 	 @BGPD@ \

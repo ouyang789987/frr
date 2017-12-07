@@ -28,10 +28,12 @@
 #include "log.h"
 #include "sockunion.h"
 #include "qobj.h"
+#include "northbound.h"
 #include "compiler.h"
 
 #define VTY_BUFSIZ 4096
 #define VTY_MAXHIST 20
+#define VTY_MAXDEPTH 8
 
 /* VTY struct. */
 struct vty {
@@ -90,6 +92,10 @@ struct vty {
 
 	/* History insert end point */
 	int hindex;
+
+	/* XPath of the current node */
+	int xpath_index;
+	char xpath[VTY_MAXDEPTH][256];
 
 	/* qobj object ID (replacement for "index") */
 	uint64_t qobj_index;
@@ -196,6 +202,33 @@ static inline void vty_push_context(struct vty *vty, int node, uint64_t id)
 	struct structname *ptr = VTY_GET_CONTEXT(structname);                  \
 	VTY_CHECK_CONTEXT(ptr);
 
+/* XPath */
+#define VTY_PUSH_XPATH(nodeval, value)                                         \
+	do {                                                                   \
+		if (vty->xpath_index >= VTY_MAXDEPTH) {                        \
+			vty_out(vty, "%% Reached maximum CLI depth (%u)\n",    \
+				VTY_MAXDEPTH);                                 \
+			return CMD_WARNING;                                    \
+		}                                                              \
+		vty->node = nodeval;                                           \
+		strlcpy(vty->xpath[vty->xpath_index], value,                   \
+			sizeof(vty->xpath[0]));                                \
+		vty->xpath_index++;                                            \
+	} while (0)
+
+#define VTY_GET_XPATH vty->xpath[vty->xpath_index - 1]
+
+#define VTY_CHECK_XPATH(value)                                                 \
+	do {                                                                   \
+		if (vty->xpath_index > 0                                       \
+		    && !nb_config_exists(candidate_config, VTY_GET_XPATH)) {   \
+			vty_out(vty,                                           \
+				"Current configuration object was deleted "    \
+				"by another process.\n");                      \
+			return CMD_WARNING;                                    \
+		}                                                              \
+	} while (0)
+
 struct vty_arg {
 	const char *name;
 	const char *value;
@@ -223,6 +256,7 @@ struct vty_arg {
 
 /* Exported variables */
 extern char integrate_default[];
+extern struct vty *vty_exclusive_lock;
 
 /* Prototypes. */
 extern void vty_init(struct thread_master *);
@@ -252,6 +286,8 @@ extern void vty_log(const char *level, const char *proto, const char *fmt,
 extern int vty_config_lock(struct vty *);
 extern int vty_config_unlock(struct vty *);
 extern void vty_config_lockless(void);
+extern int vty_config_exclusive_lock(struct vty *vty);
+extern void vty_config_exclusive_unlock(struct vty *vty);
 extern int vty_shell(struct vty *);
 extern int vty_shell_serv(struct vty *);
 extern void vty_hello(struct vty *);

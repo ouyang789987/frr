@@ -36,6 +36,7 @@
 #include "vector.h"
 #include "linklist.h"
 #include "vty.h"
+#include "northbound.h"
 #include "workqueue.h"
 #include "vrf.h"
 #include "command_match.h"
@@ -80,6 +81,7 @@ const char *node_names[] = {
 	"config",		    // CONFIG_NODE,
 	"debug",		    // DEBUG_NODE,
 	"vrf debug",		    // VRF_DEBUG_NODE,
+	"northbound debug",	    // NORTHBOUND_DEBUG_NODE,
 	"vnc debug",		    // DEBUG_VNC_NODE,
 	"aaa",			    // AAA_NODE,
 	"keychain",		    // KEYCHAIN_NODE,
@@ -718,10 +720,12 @@ vector cmd_describe_command(vector vline, struct vty *vty, int *status)
 
 	if (cmd_try_do_shortcut(vty->node, vector_slot(vline, 0))) {
 		enum node_type onode;
+		int orig_xpath_index;
 		vector shifted_vline;
 		unsigned int index;
 
 		onode = vty->node;
+		orig_xpath_index = vty->xpath_index;
 		vty->node = ENABLE_NODE;
 		/* We can try it on enable node, cos' the vty is authenticated
 		 */
@@ -737,6 +741,7 @@ vector cmd_describe_command(vector vline, struct vty *vty, int *status)
 
 		vector_free(shifted_vline);
 		vty->node = onode;
+		vty->xpath_index = orig_xpath_index;
 		return ret;
 	}
 
@@ -1072,8 +1077,10 @@ int cmd_execute_command(vector vline, struct vty *vty,
 {
 	int ret, saved_ret = 0;
 	enum node_type onode, try_node;
+	int orig_xpath_index;
 
 	onode = try_node = vty->node;
+	orig_xpath_index = vty->xpath_index;
 
 	if (cmd_try_do_shortcut(vty->node, vector_slot(vline, 0))) {
 		vector shifted_vline;
@@ -1094,6 +1101,7 @@ int cmd_execute_command(vector vline, struct vty *vty,
 
 		vector_free(shifted_vline);
 		vty->node = onode;
+		vty->xpath_index = orig_xpath_index;
 		return ret;
 	}
 
@@ -1110,6 +1118,7 @@ int cmd_execute_command(vector vline, struct vty *vty,
 		while (vty->node > CONFIG_NODE) {
 			try_node = node_parent(try_node);
 			vty->node = try_node;
+			vty->xpath_index--;
 			ret = cmd_execute_command_real(vline, FILTER_RELAXED,
 						       vty, cmd);
 			if (ret == CMD_SUCCESS || ret == CMD_WARNING
@@ -1119,6 +1128,7 @@ int cmd_execute_command(vector vline, struct vty *vty,
 		}
 		/* no command succeeded, reset the vty to the original node */
 		vty->node = onode;
+		vty->xpath_index = orig_xpath_index;
 	}
 
 	/* return command status for original node */
@@ -1280,7 +1290,6 @@ int command_config_read_one_line(struct vty *vty,
 				 const struct cmd_element **cmd, int use_daemon)
 {
 	vector vline;
-	int saved_node;
 	int ret;
 
 	vline = cmd_make_strvec(vty->buf);
@@ -1298,14 +1307,15 @@ int command_config_read_one_line(struct vty *vty,
 	    && ret != CMD_SUCCESS && ret != CMD_WARNING
 	    && ret != CMD_NOT_MY_INSTANCE && ret != CMD_WARNING_CONFIG_FAILED
 	    && vty->node != CONFIG_NODE) {
-
-		saved_node = vty->node;
+		int saved_node = vty->node;
+		int saved_xpath_index = vty->xpath_index;
 
 		while (!(use_daemon && ret == CMD_SUCCESS_DAEMON)
 		       && !(!use_daemon && ret == CMD_ERR_NOTHING_TODO)
 		       && ret != CMD_SUCCESS && ret != CMD_WARNING
 		       && vty->node > CONFIG_NODE) {
 			vty->node = node_parent(vty->node);
+			vty->xpath_index--;
 			ret = cmd_execute_command_strict(vline, vty, cmd);
 		}
 
@@ -1315,6 +1325,7 @@ int command_config_read_one_line(struct vty *vty,
 		    && !(!use_daemon && ret == CMD_ERR_NOTHING_TODO)
 		    && ret != CMD_SUCCESS && ret != CMD_WARNING) {
 			vty->node = saved_node;
+			vty->xpath_index = saved_xpath_index;
 		}
 	}
 
@@ -1358,6 +1369,22 @@ DEFUN (config_terminal,
        "Configuration terminal\n")
 {
 	if (vty_config_lock(vty))
+		vty->node = CONFIG_NODE;
+	else {
+		vty_out(vty, "VTY configuration is locked by other VTY\n");
+		return CMD_WARNING_CONFIG_FAILED;
+	}
+	return CMD_SUCCESS;
+}
+
+/* Configuration from terminal */
+DEFUN (config_exclusive,
+       config_exclusive_cmd,
+       "configure exclusive",
+       "Configuration from vty interface\n"
+       "Configure exclusively from this terminal\n")
+{
+	if (vty_config_exclusive_lock(vty))
 		vty->node = CONFIG_NODE;
 	else {
 		vty_out(vty, "VTY configuration is locked by other VTY\n");
@@ -1481,6 +1508,9 @@ void cmd_exit(struct vty *vty)
 	default:
 		break;
 	}
+
+	if (vty->xpath_index > 0)
+		vty->xpath_index--;
 }
 
 /* ALIAS_FIXME */
@@ -1554,6 +1584,9 @@ DEFUN (config_end,
 	default:
 		break;
 	}
+
+	vty->xpath_index = 0;
+
 	return CMD_SUCCESS;
 }
 
@@ -2793,6 +2826,9 @@ void install_default(enum node_type node)
 	install_element(node, &show_running_config_cmd);
 
 	install_element(node, &autocomplete_cmd);
+
+	if (frr_get_cli_mode() == FRR_CLI_TRANSACTIONAL)
+		nb_transactional_cli_install_default(node);
 }
 
 /* Initialize command interface. Install basic nodes and commands.
@@ -2918,6 +2954,11 @@ void cmd_init(int terminal)
 		install_element(CONFIG_NODE, &no_banner_motd_cmd);
 		install_element(CONFIG_NODE, &service_terminal_length_cmd);
 		install_element(CONFIG_NODE, &no_service_terminal_length_cmd);
+
+		if (frr_get_cli_mode() == FRR_CLI_TRANSACTIONAL) {
+			install_element(ENABLE_NODE, &config_exclusive_cmd);
+			nb_transactional_cli_init();
+		}
 
 		vrf_install_commands();
 	}
