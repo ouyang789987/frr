@@ -388,6 +388,8 @@ static uint8_t *rip2IfStatEntry(struct variable *v, oid name[], size_t *length,
 
 static long rip2IfConfSend(struct rip_interface *ri)
 {
+	int ri_sendv;
+
 #define doNotSend       1
 #define ripVersion1     2
 #define rip1Compatible  3
@@ -398,14 +400,18 @@ static long rip2IfConfSend(struct rip_interface *ri)
 	if (!ri->running)
 		return doNotSend;
 
-	if (ri->ri_send & RIPv2)
+	ri_sendv = cfg_get_enum("%s/version-send", ri->xpath);
+	if (ri_sendv & RIPv2)
 		return ripVersion2;
-	else if (ri->ri_send & RIPv1)
+	else if (ri_sendv & RIPv1)
 		return ripVersion1;
 	else if (cfg_exists("/frr-ripd:ripd/instance")) {
-		if (cfg_get_enum(RIP_INSTANCE "/version/send") == RIPv2)
+		int global_sendv;
+
+		global_sendv = cfg_get_enum(RIP_INSTANCE "/version/send");
+		if (global_sendv == RIPv2)
 			return ripVersion2;
-		else if (cfg_get_enum(RIP_INSTANCE "/version/send") == RIPv1)
+		else if (global_sendv == RIPv1)
 			return ripVersion1;
 	}
 	return doNotSend;
@@ -413,19 +419,22 @@ static long rip2IfConfSend(struct rip_interface *ri)
 
 static long rip2IfConfReceive(struct rip_interface *ri)
 {
+	int global_recvv;
+	int ri_recvv;
+	int recvv;
+
 #define rip1            1
 #define rip2            2
 #define rip1OrRip2      3
 #define doNotReceive    4
 
-	int recvv;
-
 	if (!ri->running)
 		return doNotReceive;
 
-	recvv = (ri->ri_receive == RI_RIP_UNSPEC)
-			? cfg_get_enum(RIP_INSTANCE "/version/receive")
-			: ri->ri_receive;
+	global_sendv = cfg_get_enum(RIP_INSTANCE "/version/receive");
+	ri_recvv = cfg_get_enum("%s/version-receive", ri->xpath);
+
+	recvv = (ri_recvv == RI_RIP_UNSPEC) ? global_sendv : ri_recvv;
 	if (recvv == RI_RIP_VERSION_1_AND_2)
 		return rip1OrRip2;
 	else if (recvv & RIPv2)
@@ -472,7 +481,7 @@ static uint8_t *rip2IfConfAddress(struct variable *v, oid name[],
 		return (uint8_t *)&domain;
 
 	case RIP2IFCONFAUTHTYPE:
-		auth = ri->auth_type;
+		auth = cfg_get_enum("%s/authentication/type", ri->xpath);
 		*val_len = sizeof(long);
 		v->type = ASN_INTEGER;
 		return (uint8_t *)&auth;

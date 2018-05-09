@@ -838,6 +838,9 @@ static int rip_auth_simple_password(struct rte *rte, struct sockaddr_in *from,
 {
 	struct rip_interface *ri;
 	char *auth_str = (char *)&rte->prefix;
+	int cfg_auth_type;
+	const char *cfg_auth_str;
+	const char *cfg_keychain;
 	int i;
 
 	/* reject passwords with zeros in the middle of the string */
@@ -852,20 +855,24 @@ static int rip_auth_simple_password(struct rte *rte, struct sockaddr_in *from,
 
 	ri = ifp->info;
 
-	if (ri->auth_type != RIP_AUTH_SIMPLE_PASSWORD
+	cfg_auth_type = cfg_get_enum("%s/authentication/type", ri->xpath);
+	if (cfg_auth_type != RIP_AUTH_SIMPLE_PASSWORD
 	    || rte->tag != htons(RIP_AUTH_SIMPLE_PASSWORD))
 		return 0;
 
 	/* Simple password authentication. */
-	if (ri->auth_str) {
-		if (strncmp(auth_str, ri->auth_str, 16) == 0)
+	if (cfg_get_optional_string(&cfg_auth_str, "%s/authentication/password",
+				    ri->xpath)) {
+		if (strncmp(auth_str, cfg_auth_str, 16) == 0)
 			return 1;
 	}
-	if (ri->key_chain) {
+
+	if (cfg_get_optional_string(&cfg_keychain,
+				    "%s/authentication/key-chain", ri->xpath)) {
 		struct keychain *keychain;
 		struct key *key;
 
-		keychain = keychain_lookup(ri->key_chain);
+		keychain = keychain_lookup(cfg_keychain);
 		if (keychain == NULL)
 			return 0;
 
@@ -889,16 +896,20 @@ static int rip_auth_md5(struct rip_packet *packet, struct sockaddr_in *from,
 	uint8_t digest[RIP_AUTH_MD5_SIZE];
 	uint16_t packet_len;
 	char auth_str[RIP_AUTH_MD5_SIZE];
+	int cfg_auth_type;
+	const char *cfg_auth_str;
+	const char *cfg_keychain;
 
 	if (IS_RIP_DEBUG_EVENT)
 		zlog_debug("RIPv2 MD5 authentication from %s",
 			   inet_ntoa(from->sin_addr));
 
 	ri = ifp->info;
+	cfg_auth_type = cfg_get_enum("%s/authentication/type", ri->xpath);
 	md5 = (struct rip_md5_info *)&packet->rte;
 
 	/* Check auth type. */
-	if (ri->auth_type != RIP_AUTH_MD5 || md5->type != htons(RIP_AUTH_MD5))
+	if (cfg_auth_type != RIP_AUTH_MD5 || md5->type != htons(RIP_AUTH_MD5))
 		return 0;
 
 	/* If the authentication length is less than 16, then it must be wrong
@@ -934,8 +945,11 @@ static int rip_auth_md5(struct rip_packet *packet, struct sockaddr_in *from,
 
 	memset(auth_str, 0, RIP_AUTH_MD5_SIZE);
 
-	if (ri->key_chain) {
-		keychain = keychain_lookup(ri->key_chain);
+	cfg_get_optional_string(&cfg_keychain, "./authentication/key-chain");
+	cfg_get_optional_string(&cfg_auth_str, "./authentication/password");
+
+	if (cfg_keychain) {
+		keychain = keychain_lookup(cfg_keychain);
 		if (keychain == NULL)
 			return 0;
 
@@ -944,8 +958,8 @@ static int rip_auth_md5(struct rip_packet *packet, struct sockaddr_in *from,
 			return 0;
 
 		strncpy(auth_str, key->string, RIP_AUTH_MD5_SIZE);
-	} else if (ri->auth_str)
-		strncpy(auth_str, ri->auth_str, RIP_AUTH_MD5_SIZE);
+	} else if (cfg_auth_str)
+		strncpy(auth_str, cfg_auth_str, RIP_AUTH_MD5_SIZE);
 
 	if (auth_str[0] == 0)
 		return 0;
@@ -974,13 +988,17 @@ static int rip_auth_md5(struct rip_packet *packet, struct sockaddr_in *from,
 static void rip_auth_prepare_str_send(struct rip_interface *ri, struct key *key,
 				      char *auth_str, int len)
 {
+	const char *cfg_auth_str;
+
 	assert(ri || key);
 
 	memset(auth_str, 0, len);
 	if (key && key->string)
 		strncpy(auth_str, key->string, len);
-	else if (ri->auth_str)
-		strncpy(auth_str, ri->auth_str, len);
+	else if (cfg_get_optional_string(&cfg_auth_str,
+					 "%s/authentication/password",
+					 ri->xpath))
+		strncpy(auth_str, cfg_auth_str, len);
 
 	return;
 }
@@ -1012,9 +1030,11 @@ static void rip_auth_simple_write(struct stream *s, char *auth_str, int len)
 static size_t rip_auth_md5_ah_write(struct stream *s, struct rip_interface *ri,
 				    struct key *key)
 {
+	int cfg_auth_type;
 	size_t doff = 0;
 
-	assert(s && ri && ri->auth_type == RIP_AUTH_MD5);
+	cfg_auth_type = cfg_get_enum("%s/authentication/type", ri->xpath);
+	assert(s && ri && cfg_auth_type == RIP_AUTH_MD5);
 
 	/* MD5 authentication. */
 	stream_putw(s, RIP_FAMILY_AUTH);
@@ -1039,7 +1059,8 @@ static size_t rip_auth_md5_ah_write(struct stream *s, struct rip_interface *ri,
 	 * this
 	 * to be configurable.
 	 */
-	stream_putc(s, ri->md5_auth_len);
+	stream_putc(
+		s, cfg_get_enum("%s/authentication/md5-auth-length", ri->xpath));
 
 	/* Sequence Number (non-decreasing). */
 	/* RFC2080: The value used in the sequence number is
@@ -1061,9 +1082,13 @@ static size_t rip_auth_md5_ah_write(struct stream *s, struct rip_interface *ri,
 static size_t rip_auth_header_write(struct stream *s, struct rip_interface *ri,
 				    struct key *key, char *auth_str, int len)
 {
-	assert(ri->auth_type != RIP_NO_AUTH);
+	int cfg_auth_type;
 
-	switch (ri->auth_type) {
+	cfg_auth_type = cfg_get_enum("%s/authentication/type", ri->xpath);
+
+	assert(cfg_auth_type != RIP_NO_AUTH);
+
+	switch (cfg_auth_type) {
 	case RIP_AUTH_SIMPLE_PASSWORD:
 		rip_auth_prepare_str_send(ri, key, auth_str, len);
 		rip_auth_simple_write(s, auth_str, len);
@@ -1085,7 +1110,8 @@ static void rip_auth_md5_set(struct stream *s, struct rip_interface *ri,
 
 	/* Make it sure this interface is configured as MD5
 	   authentication. */
-	assert((ri->auth_type == RIP_AUTH_MD5)
+	assert((cfg_get_enum("%s/authentication/type", ri->xpath)
+		== RIP_AUTH_MD5)
 	       && (authlen == RIP_AUTH_MD5_SIZE));
 	assert(doff > 0);
 
@@ -1776,6 +1802,7 @@ static int rip_read(struct thread *t)
 	struct connected *ifc;
 	struct rip_interface *ri;
 	struct prefix p;
+	int cfg_auth_type;
 
 	/* Fetch socket then register myself. */
 	sock = THREAD_FD(t);
@@ -1894,9 +1921,10 @@ static int rip_read(struct thread *t)
 	}
 
 	/* RIP Version check. RFC2453, 4.6 and 5.1 */
-	vrecv = ((ri->ri_receive == RI_RIP_UNSPEC)
+	vrecv = ((cfg_get_enum("%s/version-receive", ri->xpath)
+		  == RI_RIP_UNSPEC)
 			 ? cfg_get_enum("%s/version/receive", RIP_INSTANCE)
-			 : ri->ri_receive);
+			 : cfg_get_enum("%s/version-receive", ri->xpath));
 	if (vrecv == RI_RIP_VERSION_NONE
 	    || ((packet->version == RIPv1) && !(vrecv & RIPv1))
 	    || ((packet->version == RIPv2) && !(vrecv & RIPv2))) {
@@ -1911,7 +1939,8 @@ static int rip_read(struct thread *t)
 	/* RFC2453 5.2 If the router is not configured to authenticate RIP-2
 	   messages, then RIP-1 and unauthenticated RIP-2 messages will be
 	   accepted; authenticated RIP-2 messages shall be discarded.  */
-	if ((ri->auth_type == RIP_NO_AUTH) && rtenum
+	cfg_auth_type = cfg_get_enum("%s/authentication/type", ri->xpath);
+	if ((cfg_auth_type == RIP_NO_AUTH) && rtenum
 	    && (packet->version == RIPv2)
 	    && (packet->rte->family == htons(RIP_FAMILY_AUTH))) {
 		if (IS_RIP_DEBUG_EVENT)
@@ -1947,7 +1976,7 @@ static int rip_read(struct thread *t)
 	 * routing-information freely, while still requiring RIPv2
 	 * authentication for any RESPONSEs might be vaguely useful.
 	 */
-	if (ri->auth_type != RIP_NO_AUTH && packet->version == RIPv1) {
+	if (cfg_auth_type != RIP_NO_AUTH && packet->version == RIPv1) {
 		/* Discard RIPv1 messages other than REQUESTs */
 		if (packet->command != RIP_REQUEST) {
 			if (IS_RIP_DEBUG_PACKET)
@@ -1957,7 +1986,7 @@ static int rip_read(struct thread *t)
 			rip_peer_bad_packet(&from);
 			return -1;
 		}
-	} else if (ri->auth_type != RIP_NO_AUTH) {
+	} else if (cfg_auth_type != RIP_NO_AUTH) {
 		const char *auth_desc;
 
 		if (rtenum == 0) {
@@ -2097,6 +2126,7 @@ void rip_output_process(struct connected *ifc, struct sockaddr_in *to,
 	int subnetted = 0;
 	struct list *list = NULL;
 	struct listnode *listnode = NULL;
+	int cfg_auth_type;
 
 	/* Logging output event. */
 	if (IS_RIP_DEBUG_EVENT) {
@@ -2117,24 +2147,29 @@ void rip_output_process(struct connected *ifc, struct sockaddr_in *to,
 
 	/* Get RIP interface. */
 	ri = ifc->ifp->info;
+	cfg_auth_type = cfg_get_enum("%s/authentication/type", ri->xpath);
 
 	/* If output interface is in simple password authentication mode, we
 	   need space for authentication data.  */
-	if (ri->auth_type == RIP_AUTH_SIMPLE_PASSWORD)
+	if (cfg_auth_type == RIP_AUTH_SIMPLE_PASSWORD)
 		rtemax -= 1;
 
 	/* If output interface is in MD5 authentication mode, we need space
 	   for authentication header and data. */
-	if (ri->auth_type == RIP_AUTH_MD5)
+	if (cfg_auth_type == RIP_AUTH_MD5)
 		rtemax -= 2;
 
 	/* If output interface is in simple password authentication mode
 	   and string or keychain is specified we need space for auth. data */
-	if (ri->auth_type != RIP_NO_AUTH) {
-		if (ri->key_chain) {
+	if (cfg_auth_type != RIP_NO_AUTH) {
+		const char *cfg_keychain;
+
+		if (cfg_get_optional_string(&cfg_keychain,
+					    "%s/authentication/key-chain",
+					    ri->xpath)) {
 			struct keychain *keychain;
 
-			keychain = keychain_lookup(ri->key_chain);
+			keychain = keychain_lookup(cfg_keychain);
 			if (keychain)
 				key = key_lookup_for_send(keychain);
 		}
@@ -2206,7 +2241,8 @@ void rip_output_process(struct connected *ifc, struct sockaddr_in *to,
 
 			/* Split horizon. */
 			/* if (split_horizon == rip_split_horizon) */
-			if (ri->split_horizon == RIP_SPLIT_HORIZON) {
+			if (cfg_get_enum("%s/split-horizon", ri->xpath)
+			    == RIP_SPLIT_HORIZON) {
 				/*
 				 * We perform split horizon for RIP and
 				 * connected route.
@@ -2346,7 +2382,7 @@ void rip_output_process(struct connected *ifc, struct sockaddr_in *to,
 			/* Perform split-horizon with poisoned reverse
 			 * for RIP and connected routes.
 			 **/
-			if (ri->split_horizon
+			if (cfg_get_enum("%s/split-horizon", ri->xpath)
 			    == RIP_SPLIT_HORIZON_POISONED_REVERSE) {
 				/*
 				 * We perform split horizon for RIP and
@@ -2398,7 +2434,7 @@ void rip_output_process(struct connected *ifc, struct sockaddr_in *to,
 				stream_putw(s, 0);
 
 				/* auth header for !v1 && !no_auth */
-				if ((ri->auth_type != RIP_NO_AUTH)
+				if ((cfg_auth_type != RIP_NO_AUTH)
 				    && (version != RIPv1))
 					doff = rip_auth_header_write(
 						s, ri, key, auth_str,
@@ -2409,7 +2445,7 @@ void rip_output_process(struct connected *ifc, struct sockaddr_in *to,
 			num = rip_write_rte(num, s, p, version, rinfo);
 			if (num == rtemax) {
 				if (version == RIPv2
-				    && ri->auth_type == RIP_AUTH_MD5)
+				    && cfg_auth_type == RIP_AUTH_MD5)
 					rip_auth_md5_set(s, ri, doff, auth_str,
 							 RIP_AUTH_SIMPLE_SIZE);
 
@@ -2429,7 +2465,7 @@ void rip_output_process(struct connected *ifc, struct sockaddr_in *to,
 
 	/* Flush unwritten RTE. */
 	if (num != 0) {
-		if (version == RIPv2 && ri->auth_type == RIP_AUTH_MD5)
+		if (version == RIPv2 && cfg_auth_type == RIP_AUTH_MD5)
 			rip_auth_md5_set(s, ri, doff, auth_str,
 					 RIP_AUTH_SIMPLE_SIZE);
 
@@ -2455,7 +2491,8 @@ static void rip_update_interface(struct connected *ifc, uint8_t version,
 	struct sockaddr_in to;
 
 	/* When RIP version is 2 and multicast enable interface. */
-	if (version == RIPv2 && !ri->v2_broadcast && if_is_multicast(ifp)) {
+	if (version == RIPv2 && !cfg_get_bool("%s/v2-broadcast", ri->xpath)
+	    && if_is_multicast(ifp)) {
 		if (IS_RIP_DEBUG_EVENT)
 			zlog_debug("multicast announce on %s ", ifp->name);
 
@@ -2551,10 +2588,12 @@ static void rip_update_process(int route_type)
 			 * interface,
 			 * use rip's version setting.
 			 */
-			int vsend = ((ri->ri_send == RI_RIP_UNSPEC)
+			int vsend = ((cfg_get_enum("%s/version-send", ri->xpath)
+				      == RI_RIP_UNSPEC)
 					     ? cfg_get_enum("%s/version/send",
 							    RIP_INSTANCE)
-					     : ri->ri_send);
+					     : cfg_get_enum("%s/version-send",
+							    ri->xpath));
 
 			if (IS_RIP_DEBUG_EVENT)
 				zlog_debug("SEND UPDATE to %s ifindex %d",
@@ -3143,7 +3182,6 @@ DEFUN (show_ip_rip_status,
 	struct vrf *vrf = vrf_lookup_by_id(VRF_DEFAULT);
 	struct interface *ifp;
 	struct rip_interface *ri;
-	extern const struct message ri_version_msg[];
 	const char *send_version;
 	const char *receive_version;
 
@@ -3189,24 +3227,28 @@ DEFUN (show_ip_rip_status,
 		if (!ri->running)
 			continue;
 
+		cfg_set_base_xpath(ri->xpath);
 		if (ri->enable_network || ri->enable_interface) {
-			if (ri->ri_send == RI_RIP_UNSPEC)
+			const char *cfg_keychain;
+
+			if (cfg_get_enum("./version-send") == RI_RIP_UNSPEC)
 				send_version = cfg_get_string("%s/version/send",
 							      RIP_INSTANCE);
 			else
-				send_version = lookup_msg(ri_version_msg,
-							  ri->ri_send, NULL);
+				send_version = cfg_get_string("./version-send");
 
-			if (ri->ri_receive == RI_RIP_UNSPEC)
+			if (cfg_get_enum("./version-receive") == RI_RIP_UNSPEC)
 				receive_version = cfg_get_string(
 					"%s/version/receive", RIP_INSTANCE);
 			else
-				receive_version = lookup_msg(
-					ri_version_msg, ri->ri_receive, NULL);
+				receive_version =
+					cfg_get_string("./version-receive");
+
+			cfg_get_optional_string(&cfg_keychain,
+						"./authentication/key-chain");
 
 			vty_out(vty, "    %-17s%-3s   %-3s    %s\n", ifp->name,
-				send_version, receive_version,
-				ri->key_chain ? ri->key_chain : "");
+				send_version, receive_version, cfg_keychain);
 		}
 	}
 

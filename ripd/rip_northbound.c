@@ -721,7 +721,6 @@ static int lib_interface_rip_split_horizon_modify(enum nb_event event,
 						  const struct lyd_node *dnode,
 						  union nb_resource *resource)
 {
-	/* TODO: implement me. */
 	return NB_OK;
 }
 
@@ -732,7 +731,6 @@ static int lib_interface_rip_v2_broadcast_modify(enum nb_event event,
 						 const struct lyd_node *dnode,
 						 union nb_resource *resource)
 {
-	/* TODO: implement me. */
 	return NB_OK;
 }
 
@@ -744,7 +742,6 @@ lib_interface_rip_version_receive_modify(enum nb_event event,
 					 const struct lyd_node *dnode,
 					 union nb_resource *resource)
 {
-	/* TODO: implement me. */
 	return NB_OK;
 }
 
@@ -755,7 +752,6 @@ static int lib_interface_rip_version_send_modify(enum nb_event event,
 						 const struct lyd_node *dnode,
 						 union nb_resource *resource)
 {
-	/* TODO: implement me. */
 	return NB_OK;
 }
 
@@ -767,7 +763,6 @@ lib_interface_rip_authentication_type_modify(enum nb_event event,
 					     const struct lyd_node *dnode,
 					     union nb_resource *resource)
 {
-	/* TODO: implement me. */
 	return NB_OK;
 }
 
@@ -779,7 +774,6 @@ static int lib_interface_rip_authentication_md5_auth_length_modify(
 	enum nb_event event, const struct lyd_node *dnode,
 	union nb_resource *resource)
 {
-	/* TODO: implement me. */
 	return NB_OK;
 }
 
@@ -791,7 +785,6 @@ lib_interface_rip_authentication_password_modify(enum nb_event event,
 						 const struct lyd_node *dnode,
 						 union nb_resource *resource)
 {
-	/* TODO: implement me. */
 	return NB_OK;
 }
 
@@ -799,7 +792,6 @@ static int
 lib_interface_rip_authentication_password_delete(enum nb_event event,
 						 const struct lyd_node *dnode)
 {
-	/* TODO: implement me. */
 	return NB_OK;
 }
 
@@ -811,7 +803,6 @@ lib_interface_rip_authentication_key_chain_modify(enum nb_event event,
 						  const struct lyd_node *dnode,
 						  union nb_resource *resource)
 {
-	/* TODO: implement me. */
 	return NB_OK;
 }
 
@@ -819,7 +810,6 @@ static int
 lib_interface_rip_authentication_key_chain_delete(enum nb_event event,
 						  const struct lyd_node *dnode)
 {
-	/* TODO: implement me. */
 	return NB_OK;
 }
 
@@ -1119,18 +1109,26 @@ void rip_northbound_init(void)
 		{
 			.xpath = "/frr-interface:lib/interface/frr-ripd:rip/split-horizon",
 			.cbs.modify = lib_interface_rip_split_horizon_modify,
+			.cbs.cli_show = cli_show_ip_rip_split_horizon,
 		},
 		{
 			.xpath = "/frr-interface:lib/interface/frr-ripd:rip/v2-broadcast",
 			.cbs.modify = lib_interface_rip_v2_broadcast_modify,
+			.cbs.cli_show = cli_show_ip_rip_v2_broadcast,
 		},
 		{
 			.xpath = "/frr-interface:lib/interface/frr-ripd:rip/version-receive",
 			.cbs.modify = lib_interface_rip_version_receive_modify,
+			.cbs.cli_show = cli_show_ip_rip_receive_version,
 		},
 		{
 			.xpath = "/frr-interface:lib/interface/frr-ripd:rip/version-send",
 			.cbs.modify = lib_interface_rip_version_send_modify,
+			.cbs.cli_show = cli_show_ip_rip_send_version,
+		},
+		{
+			.xpath = "/frr-interface:lib/interface/frr-ripd:rip/authentication",
+			.cbs.cli_show = cli_show_ip_rip_authentication,
 		},
 		{
 			.xpath = "/frr-interface:lib/interface/frr-ripd:rip/authentication/type",
@@ -1144,11 +1142,13 @@ void rip_northbound_init(void)
 			.xpath = "/frr-interface:lib/interface/frr-ripd:rip/authentication/password",
 			.cbs.modify = lib_interface_rip_authentication_password_modify,
 			.cbs.delete = lib_interface_rip_authentication_password_delete,
+			.cbs.cli_show = cli_show_ip_rip_authentication_string,
 		},
 		{
 			.xpath = "/frr-interface:lib/interface/frr-ripd:rip/authentication/key-chain",
 			.cbs.modify = lib_interface_rip_authentication_key_chain_modify,
 			.cbs.delete = lib_interface_rip_authentication_key_chain_delete,
+			.cbs.cli_show = cli_show_ip_rip_authentication_key_chain,
 		},
 		/* operational data */
 		{

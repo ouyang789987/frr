@@ -841,6 +841,456 @@ void cli_show_rip_version(struct vty *vty, struct lyd_node *dnode,
 		vty_out(vty, " version %s\n", children[1].value);
 }
 
+/*
+ * XPath: /frr-interface:lib/interface/frr-ripd:rip/split-horizon
+ */
+DEFPY (ip_rip_split_horizon,
+       ip_rip_split_horizon_cmd,
+       "[no] ip rip split-horizon [poisoned-reverse$poisoned_reverse]",
+       NO_STR
+       IP_STR
+       "Routing Information Protocol\n"
+       "Perform split horizon\n"
+       "With poisoned-reverse\n")
+{
+	struct cli_config_change changes[] = {
+		{
+			.xpath = "./frr-ripd:rip/split-horizon",
+			.operation = NB_OP_MODIFY,
+		},
+	};
+
+	if (no) {
+		changes[0].value = "disabled";
+	} else {
+		if (poisoned_reverse)
+			changes[0].value = "poison-reverse";
+		else
+			changes[0].value = "simple";
+	}
+
+	return nb_cli_cfg_change(vty, NULL, changes, array_size(changes));
+}
+
+void cli_show_ip_rip_split_horizon(struct vty *vty, struct lyd_node *dnode,
+				   bool show_defaults)
+{
+	int value;
+
+	value = yang_dnode_get_enum(dnode);
+	switch (value) {
+	case RIP_NO_SPLIT_HORIZON:
+		vty_out(vty, " no ip rip split-horizon\n");
+		break;
+	case RIP_SPLIT_HORIZON:
+		vty_out(vty, " ip rip split-horizon\n");
+		break;
+	case RIP_SPLIT_HORIZON_POISONED_REVERSE:
+		vty_out(vty, " ip rip split-horizon poisoned-reverse\n");
+		break;
+	}
+}
+
+/*
+ * XPath: /frr-interface:lib/interface/frr-ripd:rip/v2-broadcast
+ */
+DEFPY (ip_rip_v2_broadcast,
+       ip_rip_v2_broadcast_cmd,
+       "[no] ip rip v2-broadcast",
+       NO_STR
+       IP_STR
+       "Routing Information Protocol\n"
+       "Send ip broadcast v2 update\n")
+{
+	struct cli_config_change changes[] = {
+		{
+			.xpath = "./frr-ripd:rip/v2-broadcast",
+			.operation = NB_OP_MODIFY,
+			.value = no ? NULL : "true",
+		},
+	};
+
+	return nb_cli_cfg_change(vty, NULL, changes, array_size(changes));
+}
+
+void cli_show_ip_rip_v2_broadcast(struct vty *vty, struct lyd_node *dnode,
+			     bool show_defaults)
+{
+	if (!yang_dnode_get_bool(dnode))
+		vty_out(vty, " no");
+
+	vty_out(vty, " ip rip v2-broadcast\n");
+}
+
+/*
+ * XPath: /frr-interface:lib/interface/frr-ripd:rip/version-receive
+ */
+DEFPY (ip_rip_receive_version,
+       ip_rip_receive_version_cmd,
+       "ip rip receive version <{1$v1|2$v2}|none>",
+       IP_STR
+       "Routing Information Protocol\n"
+       "Advertisement reception\n"
+       "Version control\n"
+       "RIP version 1\n"
+       "RIP version 2\n"
+       "None\n")
+{
+	struct cli_config_change changes[] = {
+		{
+			.xpath = "./frr-ripd:rip/version-receive",
+			.operation = NB_OP_MODIFY,
+		},
+	};
+
+	if (v1 && v2)
+		changes[0].value = "both";
+	else if (v1)
+		changes[0].value = "1";
+	else if (v2)
+		changes[0].value = "2";
+	else
+		changes[0].value = "none";
+
+	return nb_cli_cfg_change(vty, NULL, changes, array_size(changes));
+}
+
+DEFPY (no_ip_rip_receive_version,
+       no_ip_rip_receive_version_cmd,
+       "no ip rip receive version [<{1|2}|none>]",
+       NO_STR
+       IP_STR
+       "Routing Information Protocol\n"
+       "Advertisement reception\n"
+       "Version control\n"
+       "RIP version 1\n"
+       "RIP version 2\n"
+       "None\n")
+{
+	struct cli_config_change changes[] = {
+		{
+			.xpath = "./frr-ripd:rip/version-receive",
+			.operation = NB_OP_MODIFY,
+			.value = NULL,
+		},
+	};
+
+	return nb_cli_cfg_change(vty, NULL, changes, array_size(changes));
+}
+
+void cli_show_ip_rip_receive_version(struct vty *vty, struct lyd_node *dnode,
+				     bool show_defaults)
+{
+	const char *value;
+
+	if (yang_node_is_default(dnode)) {
+		vty_out(vty, " no ip rip send receive\n");
+		return;
+	}
+
+	value = yang_dnode_get_string(dnode);
+	if (strmatch(value, "both"))
+		value = "1 2";
+
+	vty_out(vty, " ip rip receive version %s\n", value);
+}
+
+/*
+ * XPath: /frr-interface:lib/interface/frr-ripd:rip/version-send
+ */
+DEFPY (ip_rip_send_version,
+       ip_rip_send_version_cmd,
+       "ip rip send version <{1$v1|2$v2}|none>",
+       IP_STR
+       "Routing Information Protocol\n"
+       "Advertisement transmission\n"
+       "Version control\n"
+       "RIP version 1\n"
+       "RIP version 2\n"
+       "None\n")
+{
+	struct cli_config_change changes[] = {
+		{
+			.xpath = "./frr-ripd:rip/version-send",
+			.operation = NB_OP_MODIFY,
+		},
+	};
+
+	if (v1 && v2)
+		changes[0].value = "both";
+	else if (v1)
+		changes[0].value = "1";
+	else if (v2)
+		changes[0].value = "2";
+	else
+		changes[0].value = "none";
+
+	return nb_cli_cfg_change(vty, NULL, changes, array_size(changes));
+}
+
+DEFPY (no_ip_rip_send_version,
+       no_ip_rip_send_version_cmd,
+       "no ip rip send version [<{1|2}|none>]",
+       NO_STR
+       IP_STR
+       "Routing Information Protocol\n"
+       "Advertisement transmission\n"
+       "Version control\n"
+       "RIP version 1\n"
+       "RIP version 2\n"
+       "None\n")
+{
+	struct cli_config_change changes[] = {
+		{
+			.xpath = "./frr-ripd:rip/version-send",
+			.operation = NB_OP_MODIFY,
+			.value = NULL,
+		},
+	};
+
+	return nb_cli_cfg_change(vty, NULL, changes, array_size(changes));
+}
+
+void cli_show_ip_rip_send_version(struct vty *vty, struct lyd_node *dnode,
+				  bool show_defaults)
+{
+	const char *value;
+
+	if (yang_node_is_default(dnode)) {
+		vty_out(vty, " no ip rip send version\n");
+		return;
+	}
+
+	value = yang_dnode_get_string(dnode);
+	if (strmatch(value, "both"))
+		value = "1 2";
+
+	vty_out(vty, " ip rip send version %s\n", value);
+}
+
+/*
+ * XPath: /frr-interface:lib/interface/frr-ripd:rip/authentication
+ */
+DEFPY (ip_rip_authentication_mode,
+       ip_rip_authentication_mode_cmd,
+       "ip rip authentication mode <md5$mode [auth-length <rfc|old-ripd>$auth_length]|text$mode>",
+       IP_STR
+       "Routing Information Protocol\n"
+       "Authentication control\n"
+       "Authentication mode\n"
+       "Keyed message digest\n"
+       "MD5 authentication data length\n"
+       "RFC compatible\n"
+       "Old ripd compatible\n"
+       "Clear text authentication\n")
+{
+	struct cli_config_change changes[] = {
+		{
+			.xpath = "./frr-ripd:rip/authentication/type",
+			.operation = NB_OP_MODIFY,
+			.value = strmatch(mode, "md5") ? "md5" : "plain-text",
+		},
+		{
+			.xpath = "./frr-ripd:rip/authentication/md5-auth-length",
+			.operation = NB_OP_MODIFY,
+		},
+	};
+
+	if (auth_length) {
+	       if (strmatch(auth_length, "rfc"))
+			changes[1].value = "16";
+	       else
+			changes[1].value = "20";
+	}
+
+	return nb_cli_cfg_change(vty, NULL, changes, array_size(changes));
+}
+
+DEFPY (no_ip_rip_authentication_mode,
+       no_ip_rip_authentication_mode_cmd,
+       "no ip rip authentication mode [<md5 [auth-length <rfc|old-ripd>]|text>]",
+       NO_STR
+       IP_STR
+       "Routing Information Protocol\n"
+       "Authentication control\n"
+       "Authentication mode\n"
+       "Keyed message digest\n"
+       "MD5 authentication data length\n"
+       "RFC compatible\n"
+       "Old ripd compatible\n"
+       "Clear text authentication\n")
+{
+	struct cli_config_change changes[] = {
+		{
+			.xpath = "./frr-ripd:rip/authentication/type",
+			.operation = NB_OP_MODIFY,
+		},
+		{
+			.xpath = "./frr-ripd:rip/authentication/md5-auth-length",
+			.operation = NB_OP_MODIFY,
+		},
+	};
+
+	return nb_cli_cfg_change(vty, NULL, changes, array_size(changes));
+}
+
+DEFPY (ip_rip_authentication_string,
+       ip_rip_authentication_string_cmd,
+       "ip rip authentication string LINE$password",
+       IP_STR
+       "Routing Information Protocol\n"
+       "Authentication control\n"
+       "Authentication string\n"
+       "Authentication string\n")
+{
+	char xpath_keychain[XPATH_MAXLEN];
+	struct cli_config_change changes[] = {
+		{
+			.xpath = "./frr-ripd:rip/authentication/password",
+			.operation = NB_OP_MODIFY,
+			.value = password,
+		},
+	};
+
+	if (strlen(password) > 16) {
+		vty_out(vty,
+			"%% RIPv2 authentication string must be shorter than 16\n");
+		return CMD_WARNING_CONFIG_FAILED;
+	}
+
+	snprintf(xpath_keychain, sizeof(xpath_keychain), "%s%s", VTY_GET_XPATH,
+		 "/frr-ripd:rip/authentication/key-chain");
+	if (nb_config_exists(candidate_config, xpath_keychain)) {
+		vty_out(vty, "%% key-chain configuration exists\n");
+		return CMD_WARNING_CONFIG_FAILED;
+	}
+
+	return nb_cli_cfg_change(vty, NULL, changes, array_size(changes));
+}
+
+DEFPY (no_ip_rip_authentication_string,
+       no_ip_rip_authentication_string_cmd,
+       "no ip rip authentication string [LINE]",
+       NO_STR
+       IP_STR
+       "Routing Information Protocol\n"
+       "Authentication control\n"
+       "Authentication string\n"
+       "Authentication string\n")
+{
+	struct cli_config_change changes[] = {
+		{
+			.xpath = "./frr-ripd:rip/authentication/password",
+			.operation = NB_OP_DELETE,
+		},
+	};
+
+	return nb_cli_cfg_change(vty, NULL, changes, array_size(changes));
+}
+
+
+DEFPY (ip_rip_authentication_key_chain,
+       ip_rip_authentication_key_chain_cmd,
+       "ip rip authentication key-chain LINE$keychain",
+       IP_STR
+       "Routing Information Protocol\n"
+       "Authentication control\n"
+       "Authentication key-chain\n"
+       "name of key-chain\n")
+{
+	char xpath_password[XPATH_MAXLEN];
+	struct cli_config_change changes[] = {
+		{
+			.xpath = "./frr-ripd:rip/authentication/key-chain",
+			.operation = NB_OP_MODIFY,
+			.value = keychain,
+		},
+	};
+
+	snprintf(xpath_password, sizeof(xpath_password), "%s%s", VTY_GET_XPATH,
+		 "/frr-ripd:rip/authentication/password");
+	if (nb_config_exists(candidate_config, xpath_password)) {
+		vty_out(vty, "%% authentication string configuration exists\n");
+		return CMD_WARNING_CONFIG_FAILED;
+	}
+
+	return nb_cli_cfg_change(vty, NULL, changes, array_size(changes));
+}
+
+DEFPY (no_ip_rip_authentication_key_chain,
+       no_ip_rip_authentication_key_chain_cmd,
+       "no ip rip authentication key-chain [LINE]",
+       NO_STR
+       IP_STR
+       "Routing Information Protocol\n"
+       "Authentication control\n"
+       "Authentication key-chain\n"
+       "name of key-chain\n")
+{
+	struct cli_config_change changes[] = {
+		{
+			.xpath = "./frr-ripd:rip/authentication/key-chain",
+			.operation = NB_OP_DELETE,
+		},
+	};
+
+	return nb_cli_cfg_change(vty, NULL, changes, array_size(changes));
+}
+
+void cli_show_ip_rip_authentication(struct vty *vty, struct lyd_node *dnode,
+				    bool show_defaults)
+{
+	struct lyd_node *auth_type;
+	struct lyd_node *md5_auth_length;
+
+	auth_type = nb_config_get(dnode, "./type");
+
+	if (!show_defaults && yang_node_is_default(auth_type))
+		return;
+
+	switch (yang_dnode_get_enum(auth_type)) {
+	case RIP_NO_AUTH:
+		vty_out(vty, " no ip rip authentication mode\n");
+		break;
+	case RIP_AUTH_SIMPLE_PASSWORD:
+		vty_out(vty, " ip rip authentication mode text\n");
+		break;
+	case RIP_AUTH_MD5:
+		md5_auth_length = nb_config_get(dnode, "./md5-auth-length");
+
+		vty_out(vty, " ip rip authentication mode md5");
+		if (show_defaults || !yang_node_is_default(md5_auth_length)) {
+			if (yang_dnode_get_enum(md5_auth_length)
+			    == RIP_AUTH_MD5_SIZE)
+				vty_out(vty, " auth-length rfc");
+			else
+				vty_out(vty, " auth-length old-ripd");
+		}
+		vty_out(vty, "\n");
+		break;
+	}
+}
+
+void cli_show_ip_rip_authentication_string(struct vty *vty,
+					   struct lyd_node *dnode,
+					   bool show_defaults)
+{
+	const char *value;
+
+	value = yang_dnode_get_string(dnode);
+	vty_out(vty, " ip rip authentication string %s\n", value);
+}
+
+void cli_show_ip_rip_authentication_key_chain(struct vty *vty,
+					      struct lyd_node *dnode,
+					      bool show_defaults)
+{
+	const char *value;
+
+	value = yang_dnode_get_string(dnode);
+	vty_out(vty, " ip rip authentication key-chain %s\n", value);
+}
+
 void rip_cli_init(void)
 {
 	install_element(CONFIG_NODE, &router_rip_cmd);
@@ -868,4 +1318,19 @@ void rip_cli_init(void)
 	install_element(RIP_NODE, &no_rip_timers_cmd);
 	install_element(RIP_NODE, &rip_version_cmd);
 	install_element(RIP_NODE, &no_rip_version_cmd);
+
+	install_element(INTERFACE_NODE, &ip_rip_split_horizon_cmd);
+	install_element(INTERFACE_NODE, &ip_rip_v2_broadcast_cmd);
+	install_element(INTERFACE_NODE, &ip_rip_receive_version_cmd);
+	install_element(INTERFACE_NODE, &no_ip_rip_receive_version_cmd);
+	install_element(INTERFACE_NODE, &ip_rip_send_version_cmd);
+	install_element(INTERFACE_NODE, &no_ip_rip_send_version_cmd);
+	install_element(INTERFACE_NODE, &ip_rip_authentication_mode_cmd);
+	install_element(INTERFACE_NODE, &no_ip_rip_authentication_mode_cmd);
+	install_element(INTERFACE_NODE, &ip_rip_authentication_string_cmd);
+	install_element(INTERFACE_NODE, &no_ip_rip_authentication_string_cmd);
+	install_element(INTERFACE_NODE, &ip_rip_authentication_key_chain_cmd);
+	install_element(INTERFACE_NODE,
+			&no_ip_rip_authentication_key_chain_cmd);
+
 }

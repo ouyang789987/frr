@@ -209,35 +209,15 @@ typedef enum {
 
 /* RIP specific interface configuration. */
 struct rip_interface {
+	/* XPath used for configuration lookups. */
+	char xpath[XPATH_MAXLEN];
+
 	/* RIP is enabled on this interface. */
 	int enable_network;
 	int enable_interface;
 
 	/* RIP is running on this interface. */
 	int running;
-
-	/* RIP version control. */
-	int ri_send;
-	int ri_receive;
-
-	/* RIPv2 broadcast mode */
-	int v2_broadcast;
-
-	/* RIPv2 authentication type. */
-	int auth_type;
-
-	/* RIPv2 authentication string. */
-	char *auth_str;
-
-	/* RIPv2 authentication key chain. */
-	char *key_chain;
-
-	/* value to use for md5->auth_len */
-	uint8_t md5_auth_len;
-
-	/* Split horizon flag. */
-	split_horizon_policy_t split_horizon;
-	split_horizon_policy_t split_horizon_default;
 
 /* For filter type slot. */
 #define RIP_FILTER_IN  0
