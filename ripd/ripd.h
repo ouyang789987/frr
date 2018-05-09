@@ -386,6 +386,10 @@ extern struct rip_info *rip_ecmp_delete(struct rip_info *);
 extern void rip_northbound_init(void);
 extern void rip_cli_init(void);
 
+/* YANG notifications */
+extern void ripd_notif_send_auth_type_failure(const char *ifname);
+extern void ripd_notif_send_auth_failure(const char *ifname);
+
 /* There is only one rip strucutre. */
 extern struct rip *rip;
 
