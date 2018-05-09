@@ -3389,7 +3389,7 @@ DEFUN (show_ip_rip_status,
 	}
 
 	vty_out(vty, "  Routing for Networks:\n");
-	config_write_rip_network(vty, 0);
+	rip_show_network_config(vty);
 
 	{
 		int found_passive = 0;
