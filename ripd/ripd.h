@@ -126,10 +126,7 @@ struct rip {
 
 	/* For redistribute route map. */
 	struct route_map *route_map[ZEBRA_ROUTE_MAX];
-
-	QOBJ_FIELDS
 };
-DECLARE_QOBJ_TYPE(rip)
 
 /* RIP routing table entry which belong to rip_packet. */
 struct rte {

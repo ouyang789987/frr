@@ -45,8 +45,6 @@
 #include "ripd/ripd.h"
 #include "ripd/rip_debug.h"
 
-DEFINE_QOBJ_TYPE(rip)
-
 /* UDP receive buffer size */
 #define RIP_UDP_RCV_BUF 41600
 
@@ -2737,8 +2735,6 @@ int rip_create(int socket)
 	rip_event(RIP_READ, rip->sock);
 	rip_event(RIP_UPDATE_EVENT, 1);
 
-	QOBJ_REG(rip, rip);
-
 	return 0;
 }
 
@@ -3361,8 +3357,6 @@ void rip_clean(void)
 	struct listnode *listnode = NULL;
 
 	if (rip) {
-		QOBJ_UNREG(rip);
-
 		/* Clear RIP routes */
 		for (rp = route_top(rip->table); rp; rp = route_next(rp))
 			if ((list = rp->info) != NULL) {
