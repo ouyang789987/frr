@@ -903,21 +903,50 @@ ripd_state_neighbors_neighbor_bad_routes_rcvd_get_elem(const char *xpath,
  */
 static void *ripd_state_routes_route_get_next(void *element)
 {
-	/* TODO: implement me. */
-	return NULL;
+	struct route_node *rn;
+
+	if (rip == NULL)
+		return NULL;
+
+	if (element == NULL)
+		rn = route_top(rip->table);
+	else
+		rn = route_next(element);
+	while (rn && rn->info == NULL)
+		rn = route_next(rn);
+
+	return rn;
 }
 
 static int ripd_state_routes_route_get_keys(void *element,
 					    struct yang_list_keys *keys)
 {
-	/* TODO: implement me. */
+	struct route_node *rn = element;
+
+	keys->num = 1;
+	(void)prefix2str(&rn->p, keys->key[0].value,
+			 sizeof(keys->key[0].value));
+
 	return NB_OK;
 }
 
 static void *ripd_state_routes_route_lookup_entry(struct yang_list_keys *keys)
 {
-	/* TODO: implement me. */
-	return NULL;
+	struct prefix prefix;
+	struct route_node *rn;
+
+	yang_str2ipv4p(keys->key[0].value, &prefix);
+
+	rn = route_node_lookup(rip->table, &prefix);
+	if (rn == NULL || rn->info == NULL)
+		return NULL;
+
+	route_unlock_node(rn);
+
+	/*
+	 * TODO: we need to handle ECMP properly.
+	 */
+	return listnode_head(rn->info);
 }
 
 /*
@@ -926,8 +955,9 @@ static void *ripd_state_routes_route_lookup_entry(struct yang_list_keys *keys)
 static struct yang_data *
 ripd_state_routes_route_prefix_get_elem(const char *xpath, void *list_entry)
 {
-	/* TODO: implement me. */
-	return NULL;
+	struct rip_info *rinfo = list_entry;
+
+	return yang_data_new_ipv4p(xpath, &rinfo->rp->p);
 }
 
 /*
@@ -936,8 +966,15 @@ ripd_state_routes_route_prefix_get_elem(const char *xpath, void *list_entry)
 static struct yang_data *
 ripd_state_routes_route_next_hop_get_elem(const char *xpath, void *list_entry)
 {
-	/* TODO: implement me. */
-	return NULL;
+	struct rip_info *rinfo = list_entry;
+
+	switch (rinfo->nh.type) {
+	case NEXTHOP_TYPE_IPV4:
+	case NEXTHOP_TYPE_IPV4_IFINDEX:
+		return yang_data_new_ipv4(xpath, &rinfo->nh.gate.ipv4);
+	default:
+		return NULL;
+	}
 }
 
 /*
@@ -946,8 +983,16 @@ ripd_state_routes_route_next_hop_get_elem(const char *xpath, void *list_entry)
 static struct yang_data *
 ripd_state_routes_route_interface_get_elem(const char *xpath, void *list_entry)
 {
-	/* TODO: implement me. */
-	return NULL;
+	struct rip_info *rinfo = list_entry;
+
+	switch (rinfo->nh.type) {
+	case NEXTHOP_TYPE_IFINDEX:
+	case NEXTHOP_TYPE_IPV4_IFINDEX:
+		return yang_data_new_string(
+			xpath, ifindex2ifname(rinfo->nh.ifindex, VRF_DEFAULT));
+	default:
+		return NULL;
+	}
 }
 
 /*
@@ -956,8 +1001,9 @@ ripd_state_routes_route_interface_get_elem(const char *xpath, void *list_entry)
 static struct yang_data *
 ripd_state_routes_route_metric_get_elem(const char *xpath, void *list_entry)
 {
-	/* TODO: implement me. */
-	return NULL;
+	struct rip_info *rinfo = list_entry;
+
+	return yang_data_new_uint8(xpath, rinfo->metric);
 }
 
 /*
