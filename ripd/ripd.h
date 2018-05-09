@@ -152,9 +152,6 @@ struct rip {
 	uint8_t distance;
 	struct route_table *distance_table;
 
-	/* RIP ECMP flag */
-	unsigned int ecmp;
-
 	/* For redistribute route map. */
 	struct {
 		char *name;
@@ -390,6 +387,8 @@ extern int rip_create(int socket);
 extern int rip_request_send(struct sockaddr_in *, struct interface *, uint8_t,
 			    struct connected *);
 extern int rip_neighbor_lookup(struct sockaddr_in *);
+
+extern void rip_ecmp_disable(void);
 
 extern int rip_create_socket(void);
 

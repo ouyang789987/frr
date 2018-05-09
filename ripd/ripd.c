@@ -21,6 +21,7 @@
 
 #include <zebra.h>
 
+#include "northbound.h"
 #include "vrf.h"
 #include "if.h"
 #include "command.h"
@@ -157,7 +158,7 @@ struct rip_info *rip_ecmp_add(struct rip_info *rinfo_new)
 
 	/* If ECMP is not allowed and some entry already exists in the list,
 	 * do nothing. */
-	if (listcount(list) && !rip->ecmp)
+	if (listcount(list) && !cfg_get_bool("%s/allow-ecmp", RIP_INSTANCE))
 		return NULL;
 
 	rinfo = rip_info_new();
@@ -3283,7 +3284,7 @@ DEFUN (no_rip_distance_source_access_list,
 }
 
 /* Update ECMP routes to zebra when ECMP is disabled. */
-static void rip_ecmp_disable(void)
+void rip_ecmp_disable(void)
 {
 	struct route_node *rp;
 	struct rip_info *rinfo, *tmp_rinfo;
@@ -3318,38 +3319,6 @@ static void rip_ecmp_disable(void)
 			/* Signal the output process to trigger an update. */
 			rip_event(RIP_TRIGGERED_UPDATE, 0);
 		}
-}
-
-DEFUN (rip_allow_ecmp,
-       rip_allow_ecmp_cmd,
-       "allow-ecmp",
-       "Allow Equal Cost MultiPath\n")
-{
-	if (rip->ecmp) {
-		vty_out(vty, "ECMP is already enabled.\n");
-		return CMD_WARNING;
-	}
-
-	rip->ecmp = 1;
-	zlog_info("ECMP is enabled.");
-	return CMD_SUCCESS;
-}
-
-DEFUN (no_rip_allow_ecmp,
-       no_rip_allow_ecmp_cmd,
-       "no allow-ecmp",
-       NO_STR
-       "Allow Equal Cost MultiPath\n")
-{
-	if (!rip->ecmp) {
-		vty_out(vty, "ECMP is already disabled.\n");
-		return CMD_WARNING;
-	}
-
-	rip->ecmp = 0;
-	zlog_info("ECMP is disabled.");
-	rip_ecmp_disable();
-	return CMD_SUCCESS;
 }
 
 /* Print out routes update time. */
@@ -3676,10 +3645,6 @@ static int config_write_rip(struct vty *vty)
 						? rdistance->access_list
 						: "");
 
-		/* ECMP configuration. */
-		if (rip->ecmp)
-			vty_out(vty, " allow-ecmp\n");
-
 		/* RIP static route configuration. */
 		for (rn = route_top(rip->route); rn; rn = route_next(rn))
 			if (rn->info)
@@ -3974,8 +3939,6 @@ void rip_init(void)
 	install_element(RIP_NODE, &no_rip_distance_source_cmd);
 	install_element(RIP_NODE, &rip_distance_source_access_list_cmd);
 	install_element(RIP_NODE, &no_rip_distance_source_access_list_cmd);
-	install_element(RIP_NODE, &rip_allow_ecmp_cmd);
-	install_element(RIP_NODE, &no_rip_allow_ecmp_cmd);
 
 	/* Debug related init. */
 	rip_debug_init();

@@ -20,6 +20,7 @@
 
 #include <zebra.h>
 
+#include "northbound.h"
 #include "command.h"
 #include "prefix.h"
 #include "table.h"
@@ -87,7 +88,7 @@ static void rip_zebra_ipv4_send(struct route_node *rp, uint8_t cmd)
 	zclient_route_send(cmd, zclient, &api);
 
 	if (IS_RIP_DEBUG_ZEBRA) {
-		if (rip->ecmp)
+		if (cfg_get_bool("%s/allow-ecmp", RIP_INSTANCE))
 			zlog_debug("%s: %s/%d nexthops %d",
 				   (cmd == ZEBRA_ROUTE_ADD)
 					   ? "Install into zebra"
