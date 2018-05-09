@@ -1291,6 +1291,21 @@ void cli_show_ip_rip_authentication_key_chain(struct vty *vty,
 	vty_out(vty, " ip rip authentication key-chain %s\n", value);
 }
 
+/*
+ * XPath: /frr-ripd:clear-rip-route
+ */
+DEFPY (clear_ip_rip,
+       clear_ip_rip_cmd,
+       "clear ip rip",
+       CLEAR_STR
+       IP_STR
+       "Clear IP RIP database\n")
+{
+	nb_cli_rpc("/frr-ripd:clear-rip-route", NULL, NULL);
+
+	return CMD_SUCCESS;
+}
+
 void rip_cli_init(void)
 {
 	install_element(CONFIG_NODE, &router_rip_cmd);
@@ -1333,4 +1348,5 @@ void rip_cli_init(void)
 	install_element(INTERFACE_NODE,
 			&no_ip_rip_authentication_key_chain_cmd);
 
+	install_element(ENABLE_NODE, &clear_ip_rip_cmd);
 }
