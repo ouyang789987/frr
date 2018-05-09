@@ -127,7 +127,11 @@ static int ripd_instance_default_metric_modify(enum nb_event event,
 					       const struct lyd_node *dnode,
 					       union nb_resource *resource)
 {
-	/* TODO: implement me. */
+	if (event != NB_EV_APPLY)
+		return NB_OK;
+
+	/* rip_update_default_metric (); */
+
 	return NB_OK;
 }
 
@@ -765,6 +769,7 @@ void rip_northbound_init(void)
 		{
 			.xpath = "/frr-ripd:ripd/instance/default-metric",
 			.cbs.modify = ripd_instance_default_metric_modify,
+			.cbs.cli_show = cli_show_rip_default_metric,
 		},
 		{
 			.xpath = "/frr-ripd:ripd/instance/distance/default",

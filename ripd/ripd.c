@@ -2284,8 +2284,9 @@ void rip_output_process(struct connected *ifc, struct sockaddr_in *to,
 						       != ZEBRA_ROUTE_CONNECT
 					    && rinfo->metric
 						       != RIP_METRIC_INFINITY)
-						rinfo->metric_out =
-							rip->default_metric;
+						rinfo->metric_out = cfg_get_uint8(
+							"%s/default-metric",
+							RIP_INSTANCE);
 				}
 			}
 
@@ -2677,7 +2678,6 @@ int rip_create(int socket)
 	rip->update_time = RIP_UPDATE_TIMER_DEFAULT;
 	rip->timeout_time = RIP_TIMEOUT_TIMER_DEFAULT;
 	rip->garbage_time = RIP_GARBAGE_TIMER_DEFAULT;
-	rip->default_metric = RIP_DEFAULT_METRIC_DEFAULT;
 
 	/* Initialize RIP routig table. */
 	rip->table = route_table_init();
@@ -2916,38 +2916,9 @@ rip_update_default_metric (void)
     if ((list = np->info) != NULL)
       for (ALL_LIST_ELEMENTS_RO (list, listnode, rinfo))
         if (rinfo->type != ZEBRA_ROUTE_RIP && rinfo->type != ZEBRA_ROUTE_CONNECT)
-          rinfo->metric = rip->default_metric;
+          rinfo->metric = cfg_get_uint8("%s/default-metric", RIP_INSTANCE);
 }
 #endif
-
-DEFUN (rip_default_metric,
-       rip_default_metric_cmd,
-       "default-metric (1-16)",
-       "Set a metric of redistribute routes\n"
-       "Default metric\n")
-{
-	int idx_number = 1;
-	if (rip) {
-		rip->default_metric = atoi(argv[idx_number]->arg);
-		/* rip_update_default_metric (); */
-	}
-	return CMD_SUCCESS;
-}
-
-DEFUN (no_rip_default_metric,
-       no_rip_default_metric_cmd,
-       "no default-metric [(1-16)]",
-       NO_STR
-       "Set a metric of redistribute routes\n"
-       "Default metric\n")
-{
-	if (rip) {
-		rip->default_metric = RIP_DEFAULT_METRIC_DEFAULT;
-		/* rip_update_default_metric (); */
-	}
-	return CMD_SUCCESS;
-}
-
 
 DEFUN (rip_timers,
        rip_timers_cmd,
@@ -3494,8 +3465,8 @@ DEFUN (show_ip_rip_status,
 	config_show_distribute(vty);
 
 	/* Default metric information. */
-	vty_out(vty, "  Default redistribution metric is %d\n",
-		rip->default_metric);
+	vty_out(vty, "  Default redistribution metric is %s\n",
+		cfg_get_string("%s/default-metric", RIP_INSTANCE));
 
 	/* Redistribute information. */
 	vty_out(vty, "  Redistributing:");
@@ -3606,11 +3577,6 @@ static int config_write_rip(struct vty *vty)
 
 		/* RIP enabled network and interface configuration. */
 		config_write_rip_network(vty, 1);
-
-		/* RIP default metric configuration */
-		if (rip->default_metric != RIP_DEFAULT_METRIC_DEFAULT)
-			vty_out(vty, " default-metric %d\n",
-				rip->default_metric);
 
 		/* Distribute configuration. */
 		write += config_write_distribute(vty);
@@ -3912,8 +3878,6 @@ void rip_init(void)
 	install_default(RIP_NODE);
 	install_element(RIP_NODE, &rip_version_cmd);
 	install_element(RIP_NODE, &no_rip_version_cmd);
-	install_element(RIP_NODE, &rip_default_metric_cmd);
-	install_element(RIP_NODE, &no_rip_default_metric_cmd);
 	install_element(RIP_NODE, &rip_timers_cmd);
 	install_element(RIP_NODE, &no_rip_timers_cmd);
 	install_element(RIP_NODE, &rip_route_cmd);
