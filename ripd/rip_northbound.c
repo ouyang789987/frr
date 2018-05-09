@@ -620,14 +620,35 @@ static int ripd_instance_static_route_create(enum nb_event event,
 					     const struct lyd_node *dnode,
 					     union nb_resource *resource)
 {
-	/* TODO: implement me. */
+	struct nexthop nh;
+	struct prefix_ipv4 p;
+
+	if (event != NB_EV_APPLY)
+		return NB_OK;
+
+	yang_dnode_get_ipv4p(dnode, &p);
+
+	memset(&nh, 0, sizeof(nh));
+	nh.type = NEXTHOP_TYPE_IPV4;
+
+	rip_redistribute_add(ZEBRA_ROUTE_RIP, RIP_ROUTE_STATIC, &p, &nh, 0, 0,
+			     0);
+
 	return NB_OK;
 }
 
 static int ripd_instance_static_route_delete(enum nb_event event,
 					     const struct lyd_node *dnode)
 {
-	/* TODO: implement me. */
+	struct prefix_ipv4 p;
+
+	if (event != NB_EV_APPLY)
+		return NB_OK;
+
+	yang_dnode_get_ipv4p(dnode, &p);
+
+	rip_redistribute_delete(ZEBRA_ROUTE_RIP, RIP_ROUTE_STATIC, &p, 0);
+
 	return NB_OK;
 }
 
@@ -1058,6 +1079,7 @@ void rip_northbound_init(void)
 			.xpath = "/frr-ripd:ripd/instance/static-route",
 			.cbs.create = ripd_instance_static_route_create,
 			.cbs.delete = ripd_instance_static_route_delete,
+			.cbs.cli_show = cli_show_rip_route,
 		},
 		{
 			.xpath = "/frr-ripd:ripd/instance/timers/flush-interval",

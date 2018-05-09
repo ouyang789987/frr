@@ -119,9 +119,6 @@ struct rip {
 	/* RIP routing information base. */
 	struct route_table *table;
 
-	/* RIP only static routing information. */
-	struct route_table *route;
-
 	/* RIP threads. */
 	struct thread *t_read;
 
