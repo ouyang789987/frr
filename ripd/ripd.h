@@ -142,7 +142,6 @@ struct rip {
 	unsigned long garbage_time;
 
 	/* RIP default distance. */
-	uint8_t distance;
 	struct route_table *distance_table;
 
 	/* For redistribute route map. */

@@ -142,7 +142,6 @@ static int ripd_instance_distance_default_modify(enum nb_event event,
 						 const struct lyd_node *dnode,
 						 union nb_resource *resource)
 {
-	/* TODO: implement me. */
 	return NB_OK;
 }
 
@@ -774,6 +773,7 @@ void rip_northbound_init(void)
 		{
 			.xpath = "/frr-ripd:ripd/instance/distance/default",
 			.cbs.modify = ripd_instance_distance_default_modify,
+			.cbs.cli_show = cli_show_rip_distance,
 		},
 		{
 			.xpath = "/frr-ripd:ripd/instance/distance/source",
