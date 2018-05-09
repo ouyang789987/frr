@@ -152,22 +152,65 @@ static int ripd_instance_distance_source_create(enum nb_event event,
 						const struct lyd_node *dnode,
 						union nb_resource *resource)
 {
-	/* TODO: implement me. */
+	struct lyd_node *dnode_prefix;
+	struct prefix_ipv4 prefix;
+	struct route_node *rn;
+
+	if (event != NB_EV_APPLY)
+		return NB_OK;
+
+	dnode_prefix = nb_config_get(dnode, "./prefix");
+	yang_dnode_get_ipv4p(dnode_prefix, &prefix);
+
+	/* Get RIP distance node. */
+	rn = route_node_get(rip_distance_table, (struct prefix *)&prefix);
+	rn->info = rip_distance_new();
+
 	return NB_OK;
 }
 
 static int ripd_instance_distance_source_delete(enum nb_event event,
 						const struct lyd_node *dnode)
 {
-	/* TODO: implement me. */
+	struct route_node *rn;
+	struct rip_distance *rdistance;
+
+	if (event != NB_EV_APPLY)
+		return NB_OK;
+
+	rn = yang_dnode_lookup_list_entry(dnode);
+	if (rn == NULL)
+		return NB_ERR_NOT_FOUND;
+
+	rdistance = rn->info;
+	if (rdistance->access_list)
+		free(rdistance->access_list);
+	rip_distance_free(rdistance);
+
+	rn->info = NULL;
+	route_unlock_node(rn);
+
 	return NB_OK;
 }
 
 static void *
 ripd_instance_distance_source_lookup_entry(struct yang_list_keys *keys)
 {
-	/* TODO: implement me. */
-	return NULL;
+	struct prefix_ipv4 prefix;
+	struct route_node *rn;
+
+	yang_str2ipv4p(keys->key[0].value, &prefix);
+
+	rn = route_node_lookup(rip_distance_table, (struct prefix *)&prefix);
+	if (!rn) {
+		zlog_warn("%s: can't find specified prefix: %s", __func__,
+			  keys->key[0].value);
+		return NULL;
+	}
+
+	route_unlock_node(rn);
+
+	return rn;
 }
 
 /*
@@ -178,7 +221,22 @@ ripd_instance_distance_source_distance_modify(enum nb_event event,
 					      const struct lyd_node *dnode,
 					      union nb_resource *resource)
 {
-	/* TODO: implement me. */
+	struct route_node *rn;
+	uint8_t distance;
+	struct rip_distance *rdistance;
+
+	if (event != NB_EV_APPLY)
+		return NB_OK;
+
+	/* Set distance value. */
+	rn = yang_dnode_lookup_list_entry(dnode);
+	if (rn == NULL)
+		return NB_ERR_NOT_FOUND;
+
+	distance = yang_dnode_get_uint8(dnode);
+	rdistance = rn->info;
+	rdistance->distance = distance;
+
 	return NB_OK;
 }
 
@@ -190,7 +248,25 @@ ripd_instance_distance_source_access_list_modify(enum nb_event event,
 						 const struct lyd_node *dnode,
 						 union nb_resource *resource)
 {
-	/* TODO: implement me. */
+	const char *acl_name;
+	struct route_node *rn;
+	struct rip_distance *rdistance;
+
+	if (event != NB_EV_APPLY)
+		return NB_OK;
+
+	acl_name = yang_dnode_get_string(dnode);
+
+	/* Set access-list */
+	rn = yang_dnode_lookup_list_entry(dnode);
+	if (rn == NULL)
+		return NB_ERR_NOT_FOUND;
+
+	rdistance = rn->info;
+	if (rdistance->access_list)
+		free(rdistance->access_list);
+	rdistance->access_list = strdup(acl_name);
+
 	return NB_OK;
 }
 
@@ -198,7 +274,21 @@ static int
 ripd_instance_distance_source_access_list_delete(enum nb_event event,
 						 const struct lyd_node *dnode)
 {
-	/* TODO: implement me. */
+	struct route_node *rn;
+	struct rip_distance *rdistance;
+
+	if (event != NB_EV_APPLY)
+		return NB_OK;
+
+	/* Reset access-list configuration. */
+	rn = yang_dnode_lookup_list_entry(dnode);
+	if (rn == NULL)
+		return NB_ERR_NOT_FOUND;
+
+	rdistance = rn->info;
+	free(rdistance->access_list);
+	rdistance->access_list = NULL;
+
 	return NB_OK;
 }
 
@@ -780,6 +870,7 @@ void rip_northbound_init(void)
 			.cbs.create = ripd_instance_distance_source_create,
 			.cbs.delete = ripd_instance_distance_source_delete,
 			.cbs.lookup_entry = ripd_instance_distance_source_lookup_entry,
+			.cbs.cli_show = cli_show_rip_distance_source,
 		},
 		{
 			.xpath = "/frr-ripd:ripd/instance/distance/source/distance",
