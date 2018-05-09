@@ -374,7 +374,6 @@ extern void rip_route_map_reset(void);
 extern void rip_zclient_init(struct thread_master *);
 extern void rip_zclient_stop(void);
 extern void rip_zclient_reset(void);
-extern void rip_offset_init(void);
 extern int if_check_address(struct in_addr addr);
 extern int rip_create(int socket);
 
@@ -404,7 +403,6 @@ extern void rip_distribute_update_interface(struct interface *);
 extern void rip_if_rmap_update_interface(struct interface *);
 
 extern int config_write_rip_network(struct vty *, int);
-extern int config_write_rip_offset_list(struct vty *);
 extern int config_write_rip_redistribute(struct vty *, int);
 
 extern void rip_peer_init(void);
@@ -414,13 +412,6 @@ extern void rip_peer_bad_packet(struct sockaddr_in *);
 extern void rip_peer_display(struct vty *);
 extern struct rip_peer *rip_peer_lookup(struct in_addr *);
 extern struct rip_peer *rip_peer_lookup_next(struct in_addr *);
-
-extern int rip_offset_list_apply_in(struct prefix_ipv4 *, struct interface *,
-				    uint32_t *);
-extern int rip_offset_list_apply_out(struct prefix_ipv4 *, struct interface *,
-				     uint32_t *);
-extern void rip_offset_clean(void);
-
 extern void rip_info_free(struct rip_info *);
 extern struct rip_distance *rip_distance_new(void);
 extern void rip_distance_free(struct rip_distance *rdistance);

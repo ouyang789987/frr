@@ -367,6 +367,44 @@ static int rip_filter(int rip_distribute, struct prefix_ipv4 *p,
 	return 0;
 }
 
+/* If metric is modifed return 1. */
+static int rip_offset_list_apply(struct prefix_ipv4 *p, struct interface *ifp,
+				 uint32_t *metric, const char *direction)
+{
+	const char *acl_name;
+	struct access_list *alist;
+
+	/* Look up offset-list with interface name. */
+	cfg_set_base_xpath("%s/offset-list[ifname='%s'][direction='%s']",
+			   RIP_INSTANCE, ifp->name, direction);
+	if (cfg_exists(".")) {
+		acl_name = cfg_get_string("./access-list");
+		alist = access_list_lookup(AFI_IP, acl_name);
+		if (access_list_apply(alist, (struct prefix *)p)
+		    == FILTER_PERMIT) {
+			*metric += cfg_get_uint8("./metric");
+			return 1;
+		}
+		return 0;
+	}
+
+	/* Look up offset-list without interface name. */
+	cfg_set_base_xpath("%s/offset-list[ifname='*'][direction='%s']",
+			   RIP_INSTANCE, direction);
+	if (cfg_exists(".")) {
+		acl_name = cfg_get_string("./access-list");
+		alist = access_list_lookup(AFI_IP, acl_name);
+		if (access_list_apply(alist, (struct prefix *)p)
+		    == FILTER_PERMIT) {
+			*metric += cfg_get_uint8("./metric");
+			return 1;
+		}
+		return 0;
+	}
+
+	return 0;
+}
+
 /* Check nexthop address validity. */
 static int rip_nexthop_check(struct in_addr *addr)
 {
@@ -461,7 +499,7 @@ static void rip_rte_process(struct rte *rte, struct sockaddr_in *from,
 	   arrived. If the result is greater than infinity, use infinity
 	   (RFC2453 Sec. 3.9.2) */
 	/* Zebra ripd can handle offset-list in. */
-	ret = rip_offset_list_apply_in(&p, ifp, &rte->metric);
+	ret = rip_offset_list_apply(&p, ifp, &rte->metric, "in");
 
 	/* If offset-list does not modify the metric use interface's
 	   metric. */
@@ -2292,8 +2330,8 @@ void rip_output_process(struct connected *ifc, struct sockaddr_in *to,
 
 			/* Apply offset-list */
 			if (rinfo->metric != RIP_METRIC_INFINITY)
-				rip_offset_list_apply_out(p, ifc->ifp,
-							  &rinfo->metric_out);
+				rip_offset_list_apply(
+					p, ifc->ifp, &rinfo->metric_out, "out");
 
 			if (rinfo->metric_out > RIP_METRIC_INFINITY)
 				rinfo->metric_out = RIP_METRIC_INFINITY;
@@ -3409,9 +3447,6 @@ static int config_write_rip(struct vty *vty)
 		/* Redistribute configuration. */
 		config_write_rip_redistribute(vty, 1);
 
-		/* RIP offset-list configuration. */
-		config_write_rip_offset_list(vty);
-
 		/* Distribute configuration. */
 		write += config_write_distribute(vty);
 
@@ -3579,7 +3614,6 @@ void rip_clean(void)
 
 	rip_clean_network();
 	rip_passive_nondefault_clean();
-	rip_offset_clean();
 	rip_interfaces_clean();
 	rip_distance_reset();
 	rip_redistribute_clean();
@@ -3713,7 +3747,6 @@ void rip_init(void)
 
 	/* Route-map */
 	rip_route_map_init();
-	rip_offset_init();
 
 	route_map_add_hook(rip_routemap_update);
 	route_map_delete_hook(rip_routemap_update);

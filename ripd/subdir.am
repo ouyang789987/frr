@@ -16,7 +16,6 @@ ripd_librip_a_SOURCES = \
 	ripd/rip_debug.c \
 	ripd/rip_interface.c \
 	ripd/rip_memory.c \
-	ripd/rip_offset.c \
 	ripd/rip_northbound.c \
 	ripd/rip_peer.c \
 	ripd/rip_routemap.c \

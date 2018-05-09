@@ -395,6 +395,97 @@ void cli_show_rip_network_interface(struct vty *vty, struct lyd_node *dnode,
 	vty_out(vty, " network %s\n", yang_dnode_get_string(dnode));
 }
 
+/*
+ * XPath: /frr-ripd:ripd/instance/offset-list
+ */
+DEFPY (rip_offset_list,
+       rip_offset_list_cmd,
+       "offset-list WORD$acl <in|out>$direction (0-16)$metric [IFNAME]",
+       "Modify RIP metric\n"
+       "Access-list name\n"
+       "For incoming updates\n"
+       "For outgoing updates\n"
+       "Metric value\n"
+       "Interface to match\n")
+{
+	char xpath_list[XPATH_MAXLEN];
+	struct cli_config_change changes[] = {
+		{
+			.xpath = ".",
+			.operation = NB_OP_CREATE,
+		},
+		{
+			.xpath = "./access-list",
+			.operation = NB_OP_MODIFY,
+			.value = acl,
+		},
+		{
+			.xpath = "./metric",
+			.operation = NB_OP_MODIFY,
+			.value = metric_str,
+		},
+	};
+
+	snprintf(xpath_list, sizeof(xpath_list),
+		 "./offset-list[interface='%s'][direction='%s']",
+		 ifname ? ifname : "*", direction);
+
+	return nb_cli_cfg_change(vty, xpath_list, changes, array_size(changes));
+}
+
+DEFPY (no_rip_offset_list,
+       no_rip_offset_list_cmd,
+       "no offset-list WORD$acl <in|out>$direction (0-16)$metric [IFNAME]",
+       NO_STR
+       "Modify RIP metric\n"
+       "Access-list name\n"
+       "For incoming updates\n"
+       "For outgoing updates\n"
+       "Metric value\n"
+       "Interface to match\n")
+{
+	char xpath_list[XPATH_MAXLEN];
+	struct cli_config_change changes[] = {
+		{
+			.xpath = ".",
+			.operation = NB_OP_DELETE,
+		},
+	};
+
+	snprintf(xpath_list, sizeof(xpath_list),
+		 "./offset-list[interface='%s'][direction='%s']",
+		 ifname ? ifname : "*", direction);
+
+	return nb_cli_cfg_change(vty, xpath_list, changes, array_size(changes));
+}
+
+void cli_show_rip_offset_list(struct vty *vty, struct lyd_node *dnode,
+			      bool show_defaults)
+{
+	struct yang_data children[] = {
+		{
+			.xpath = RIP_INSTANCE "/offset-list/interface",
+		},
+		{
+			.xpath = RIP_INSTANCE "/offset-list/direction",
+		},
+		{
+			.xpath = RIP_INSTANCE "/offset-list/access-list",
+		},
+		{
+			.xpath = RIP_INSTANCE "/offset-list/metric",
+		},
+	};
+
+	yang_parse_children(dnode, children, array_size(children));
+
+	vty_out(vty, " offset-list %s %s %s", children[2].value,
+		children[1].value, children[3].value);
+	if (!strmatch(children[0].value, "*"))
+		vty_out(vty, " %s", children[0].value);
+	vty_out(vty, "\n");
+}
+
 void rip_cli_init(void)
 {
 	install_element(CONFIG_NODE, &router_rip_cmd);
@@ -411,4 +502,6 @@ void rip_cli_init(void)
 	install_element(RIP_NODE, &rip_neighbor_cmd);
 	install_element(RIP_NODE, &rip_network_prefix_cmd);
 	install_element(RIP_NODE, &rip_network_if_cmd);
+	install_element(RIP_NODE, &rip_offset_list_cmd);
+	install_element(RIP_NODE, &no_rip_offset_list_cmd);
 }

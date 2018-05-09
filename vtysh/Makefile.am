@@ -101,7 +101,6 @@ if RIPD
 vtysh_scan += $(top_srcdir)/ripd/rip_cli.c
 vtysh_scan += $(top_srcdir)/ripd/rip_debug.c
 vtysh_scan += $(top_srcdir)/ripd/rip_interface.c
-vtysh_scan += $(top_srcdir)/ripd/rip_offset.c
 vtysh_scan += $(top_srcdir)/ripd/rip_zebra.c
 vtysh_scan += $(top_srcdir)/ripd/ripd.c
 endif

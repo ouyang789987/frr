@@ -383,20 +383,17 @@ static int ripd_instance_offset_list_create(enum nb_event event,
 					    const struct lyd_node *dnode,
 					    union nb_resource *resource)
 {
-	/* TODO: implement me. */
 	return NB_OK;
 }
 
 static int ripd_instance_offset_list_delete(enum nb_event event,
 					    const struct lyd_node *dnode)
 {
-	/* TODO: implement me. */
 	return NB_OK;
 }
 
 static void *ripd_instance_offset_list_lookup_entry(struct yang_list_keys *keys)
 {
-	/* TODO: implement me. */
 	return NULL;
 }
 
@@ -408,7 +405,6 @@ ripd_instance_offset_list_access_list_modify(enum nb_event event,
 					     const struct lyd_node *dnode,
 					     union nb_resource *resource)
 {
-	/* TODO: implement me. */
 	return NB_OK;
 }
 
@@ -419,7 +415,6 @@ static int ripd_instance_offset_list_metric_modify(enum nb_event event,
 						   const struct lyd_node *dnode,
 						   union nb_resource *resource)
 {
-	/* TODO: implement me. */
 	return NB_OK;
 }
 
@@ -934,6 +929,7 @@ void rip_northbound_init(void)
 			.cbs.create = ripd_instance_offset_list_create,
 			.cbs.delete = ripd_instance_offset_list_delete,
 			.cbs.lookup_entry = ripd_instance_offset_list_lookup_entry,
+			.cbs.cli_show = cli_show_rip_offset_list,
 		},
 		{
 			.xpath = "/frr-ripd:ripd/instance/offset-list/access-list",
