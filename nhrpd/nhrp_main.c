@@ -112,6 +112,7 @@ static struct quagga_signal_t sighandlers[] = {
 };
 
 const char *nhrpd_yang_modules[] = {
+	"frr-interface",
 };
 
 FRR_DAEMON_INFO(nhrpd, NHRP, .vty_port = NHRP_VTY_PORT,

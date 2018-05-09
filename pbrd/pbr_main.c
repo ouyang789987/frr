@@ -112,6 +112,7 @@ struct quagga_signal_t pbr_signals[] = {
 #define PBR_VTY_PORT 2615
 
 const char *pbrd_yang_modules[] = {
+	"frr-interface",
 };
 
 FRR_DAEMON_INFO(pbrd, PBR, .vty_port = PBR_VTY_PORT,

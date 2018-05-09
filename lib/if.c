@@ -24,6 +24,7 @@
 #include "linklist.h"
 #include "vector.h"
 #include "vty.h"
+#include "northbound.h"
 #include "command.h"
 #include "vrf.h"
 #include "if.h"
@@ -33,6 +34,7 @@
 #include "table.h"
 #include "buffer.h"
 #include "log.h"
+#include "cli_commands.h"
 
 DEFINE_MTYPE(LIB, IF, "Interface")
 DEFINE_MTYPE_STATIC(LIB, CONNECTED, "Connected")
@@ -129,6 +131,18 @@ static int if_cmp_index_func(const struct interface *ifp1,
 	return ifp1->ifindex - ifp2->ifindex;
 }
 
+static void if_update_xpath(struct interface *ifp)
+{
+	struct vrf *vrf;
+
+	vrf = vrf_lookup_by_id(ifp->vrf_id);
+	assert(vrf);
+
+	snprintf(ifp->xpath, sizeof(ifp->xpath),
+		 "/frr-interface:lib/interface[name='%s'][vrf='%s']", ifp->name,
+		 vrf->name);
+}
+
 /* Create new interface structure. */
 struct interface *if_create(const char *name, vrf_id_t vrf_id)
 {
@@ -151,6 +165,7 @@ struct interface *if_create(const char *name, vrf_id_t vrf_id)
 	/* Enable Link-detection by default */
 	SET_FLAG(ifp->status, ZEBRA_INTERFACE_LINKDETECTION);
 
+	if_update_xpath(ifp);
 	QOBJ_REG(ifp, interface);
 	hook_call(if_add, ifp);
 	return ifp;
@@ -171,6 +186,7 @@ void if_update_to_new_vrf(struct interface *ifp, vrf_id_t vrf_id)
 
 	ifp->vrf_id = vrf_id;
 	vrf = vrf_get(ifp->vrf_id, NULL);
+	if_update_xpath(ifp);
 
 	IFNAME_RB_INSERT(vrf, ifp);
 	if (ifp->ifindex != IFINDEX_INTERNAL)
@@ -380,26 +396,18 @@ struct interface *if_lookup_prefix(struct prefix *prefix, vrf_id_t vrf_id)
 
 /* Get interface by name if given name interface doesn't exist create
    one. */
-struct interface *if_get_by_name(const char *name, vrf_id_t vrf_id, int vty)
+struct interface *if_get_by_name(const char *name, vrf_id_t vrf_id)
 {
 	struct interface *ifp;
 
 	ifp = if_lookup_by_name(name, vrf_id);
 	if (ifp)
 		return ifp;
-	/* Not Found on same VRF. If the interface command
-	 * was entered in vty without a VRF (passed as VRF_DEFAULT),
-	 * accept the ifp we found. If a vrf was entered and there is
-	 * a mismatch, reject it if from vty.
-	 */
+
 	ifp = if_lookup_by_name_all_vrf(name);
 	if (!ifp)
 		return if_create(name, vrf_id);
-	if (vty) {
-		if (vrf_id == VRF_DEFAULT)
-			return ifp;
-		return NULL;
-	}
+
 	/* if vrf backend uses NETNS, then
 	 * this should not be considered as an update
 	 * then create the new interface
@@ -569,37 +577,6 @@ void if_dump_all(void)
 			if_dump(ifp);
 }
 
-DEFUN (interface_desc,
-       interface_desc_cmd,
-       "description LINE...",
-       "Interface specific description\n"
-       "Characters describing this interface\n")
-{
-	int idx_line = 1;
-	VTY_DECLVAR_CONTEXT(interface, ifp);
-
-	if (ifp->desc)
-		XFREE(MTYPE_TMP, ifp->desc);
-	ifp->desc = argv_concat(argv, argc, idx_line);
-
-	return CMD_SUCCESS;
-}
-
-DEFUN (no_interface_desc,
-       no_interface_desc_cmd,
-       "no description",
-       NO_STR
-       "Interface specific description\n")
-{
-	VTY_DECLVAR_CONTEXT(interface, ifp);
-
-	if (ifp->desc)
-		XFREE(MTYPE_TMP, ifp->desc);
-	ifp->desc = NULL;
-
-	return CMD_SUCCESS;
-}
-
 #ifdef SUNOS_5
 /* Need to handle upgrade from SUNWzebra to Quagga. SUNWzebra created
  * a seperate struct interface for each logical interface, so config
@@ -634,120 +611,9 @@ static struct interface *if_sunwzebra_get(char *name, vrf_id_t vrf_id)
 	if (cp)
 		*cp = '\0';
 
-	return if_get_by_name(name, vrf_id, 1);
+	return if_get_by_name(name, vrf_id);
 }
 #endif /* SUNOS_5 */
-
-DEFUN (interface,
-       interface_cmd,
-       "interface IFNAME [vrf NAME]",
-       "Select an interface to configure\n"
-       "Interface's name\n"
-       VRF_CMD_HELP_STR)
-{
-	int idx_ifname = 1;
-	int idx_vrf = 3;
-	const char *ifname = argv[idx_ifname]->arg;
-	const char *vrfname = (argc > 2) ? argv[idx_vrf]->arg : NULL;
-
-	struct interface *ifp;
-	vrf_id_t vrf_id = VRF_DEFAULT;
-
-	if (strlen(ifname) > INTERFACE_NAMSIZ) {
-		vty_out(vty,
-			"%% Interface name %s is invalid: length exceeds "
-			"%d characters\n",
-			ifname, INTERFACE_NAMSIZ);
-		return CMD_WARNING_CONFIG_FAILED;
-	}
-
-	/*Pending: need proper vrf name based lookup/(possible creation of VRF)
-	 Imagine forward reference of a vrf by name in this interface config */
-	if (vrfname)
-		VRF_GET_ID(vrf_id, vrfname);
-
-#ifdef SUNOS_5
-	ifp = if_sunwzebra_get(ifname, vrf_id);
-#else
-	ifp = if_get_by_name(ifname, vrf_id, 1);
-#endif /* SUNOS_5 */
-
-	if (!ifp) {
-		vty_out(vty, "%% interface %s not in %s\n", ifname, vrfname);
-		return CMD_WARNING_CONFIG_FAILED;
-	}
-	VTY_PUSH_CONTEXT(INTERFACE_NODE, ifp);
-
-	return CMD_SUCCESS;
-}
-
-DEFUN_NOSH (no_interface,
-           no_interface_cmd,
-           "no interface IFNAME [vrf NAME]",
-           NO_STR
-           "Delete a pseudo interface's configuration\n"
-           "Interface's name\n"
-           VRF_CMD_HELP_STR)
-{
-	int idx_vrf = 4;
-	const char *ifname = argv[2]->arg;
-	const char *vrfname = (argc > 3) ? argv[idx_vrf]->arg : NULL;
-
-	// deleting interface
-	struct interface *ifp;
-	vrf_id_t vrf_id = VRF_DEFAULT;
-
-	if (argc > 3)
-		VRF_GET_ID(vrf_id, vrfname);
-
-	ifp = if_lookup_by_name(ifname, vrf_id);
-
-	if (ifp == NULL) {
-		vty_out(vty, "%% Interface %s does not exist\n", ifname);
-		return CMD_WARNING_CONFIG_FAILED;
-	}
-
-	if (CHECK_FLAG(ifp->status, ZEBRA_INTERFACE_ACTIVE)) {
-		vty_out(vty, "%% Only inactive interfaces can be deleted\n");
-		return CMD_WARNING_CONFIG_FAILED;
-	}
-
-	if_delete(ifp);
-
-	return CMD_SUCCESS;
-}
-
-static void if_autocomplete(vector comps, struct cmd_token *token)
-{
-	struct interface *ifp;
-	struct vrf *vrf = NULL;
-
-	RB_FOREACH (vrf, vrf_name_head, &vrfs_by_name) {
-		FOR_ALL_INTERFACES (vrf, ifp) {
-			vector_set(comps, XSTRDUP(MTYPE_COMPLETION, ifp->name));
-		}
-	}
-}
-
-static const struct cmd_variable_handler if_var_handlers[] = {
-	{/* "interface NAME" */
-	 .varname = "interface",
-	 .completions = if_autocomplete},
-	{.tokenname = "IFNAME", .completions = if_autocomplete},
-	{.tokenname = "INTERFACE", .completions = if_autocomplete},
-	{.completions = NULL}};
-
-void if_cmd_init(void)
-{
-	cmd_variable_handler_register(if_var_handlers);
-
-	install_element(CONFIG_NODE, &interface_cmd);
-	install_element(CONFIG_NODE, &no_interface_cmd);
-
-	install_default(INTERFACE_NODE);
-	install_element(INTERFACE_NODE, &interface_desc_cmd);
-	install_element(INTERFACE_NODE, &no_interface_desc_cmd);
-}
 
 #if 0
 /* For debug purpose. */
@@ -1200,4 +1066,172 @@ void if_link_params_free(struct interface *ifp)
 		return;
 	XFREE(MTYPE_IF_LINK_PARAMS, ifp->link_params);
 	ifp->link_params = NULL;
+}
+
+/* ------- Northbound callbacks ------- */
+
+/*
+ * XPath: /frr-interface:lib/interface
+ */
+static int lib_interface_create(enum nb_event event,
+				const struct lyd_node *dnode,
+				union nb_resource *resource)
+{
+	struct yang_list_keys keys;
+	const char *ifname;
+	const char *vrfname;
+	struct vrf *vrf;
+
+	yang_dnode_get_keys(dnode, &keys);
+	ifname = keys.key[0].value;
+	vrfname = keys.key[1].value;
+
+	switch (event) {
+	case NB_EV_PREPARE:
+		vrf = vrf_lookup_by_name(vrfname);
+		if (vrf == NULL) {
+			zlog_warn("%s: VRF %s doesn't exist", __func__,
+				  vrfname);
+			return NB_ERR;
+		}
+
+		if (vrf->vrf_id == VRF_UNKNOWN) {
+			zlog_warn("%s: VRF %s is not active", __func__,
+				  vrf->name);
+			return NB_ERR;
+		}
+		resource->ptr = vrf;
+		break;
+	case NB_EV_ABORT:
+		break;
+	case NB_EV_APPLY:
+		vrf = resource->ptr;
+#ifdef SUNOS_5
+		if_sunwzebra_get(ifname, vrf->vrf_id);
+#else
+		if_get_by_name(ifname, vrf->vrf_id);
+#endif /* SUNOS_5 */
+		break;
+	}
+
+	return NB_OK;
+}
+
+static int lib_interface_delete(enum nb_event event,
+				const struct lyd_node *dnode)
+{
+	struct interface *ifp;
+
+	ifp = yang_dnode_lookup_list_entry(dnode);
+	if (ifp == NULL)
+		return NB_ERR_NOT_FOUND;
+
+	switch (event) {
+	case NB_EV_PREPARE:
+		if (CHECK_FLAG(ifp->status, ZEBRA_INTERFACE_ACTIVE)) {
+			zlog_warn("%s: only inactive interfaces can be deleted",
+				  __func__);
+			return NB_ERR;
+		}
+		break;
+	case NB_EV_ABORT:
+		break;
+	case NB_EV_APPLY:
+		if_delete(ifp);
+		break;
+	}
+
+	return NB_OK;
+}
+
+static void *lib_interface_lookup_entry(struct yang_list_keys *keys)
+{
+	const char *ifname;
+	const char *vrfname;
+	struct vrf *vrf;
+
+	ifname = keys->key[0].value;
+	vrfname = keys->key[1].value;
+
+	vrf = vrf_lookup_by_name(vrfname);
+	if (vrf == NULL) {
+		zlog_warn("%s: VRF %s doesn't exist", __func__, vrfname);
+		return NULL;
+	}
+
+	if (vrf->vrf_id == VRF_UNKNOWN) {
+		zlog_warn("%s: VRF %s is not active", __func__, vrf->name);
+		return NULL;
+	}
+
+	return if_lookup_by_name(ifname, vrf->vrf_id);
+}
+
+/*
+ * XPath: /frr-interface:lib/interface/description
+ */
+static int lib_interface_description_modify(enum nb_event event,
+					    const struct lyd_node *dnode,
+					    union nb_resource *resource)
+{
+	struct interface *ifp;
+	const char *description;
+
+	if (event != NB_EV_APPLY)
+		return NB_OK;
+
+	ifp = yang_dnode_lookup_list_entry(dnode);
+	if (ifp == NULL)
+		return NB_ERR_NOT_FOUND;
+
+	if (ifp->desc)
+		XFREE(MTYPE_TMP, ifp->desc);
+	description = yang_dnode_get_string(dnode);
+	ifp->desc = XSTRDUP(MTYPE_TMP, description);
+
+	return NB_OK;
+}
+
+static int lib_interface_description_delete(enum nb_event event,
+					    const struct lyd_node *dnode)
+{
+	struct interface *ifp;
+
+	if (event != NB_EV_APPLY)
+		return NB_OK;
+
+	ifp = yang_dnode_lookup_list_entry(dnode);
+	if (ifp == NULL)
+		return NB_ERR_NOT_FOUND;
+
+	if (ifp->desc)
+		XFREE(MTYPE_TMP, ifp->desc);
+
+	return NB_OK;
+}
+
+/*
+ * Initialize northbound options.
+ */
+void if_northbound_init(void)
+{
+	/* clang-format off */
+	struct nb_option options[] = {
+		{
+			.xpath = "/frr-interface:lib/interface",
+			.cbs.create = lib_interface_create,
+			.cbs.delete = lib_interface_delete,
+			.cbs.lookup_entry = lib_interface_lookup_entry,
+			.cbs.cli_show = cli_show_interface,
+		},
+		{
+			.xpath = "/frr-interface:lib/interface/description",
+			.cbs.modify = lib_interface_description_modify,
+			.cbs.delete = lib_interface_description_delete,
+			.cbs.cli_show = cli_show_interface_desc,
+		},
+	};
+	/* clang-format on */
+
+	nb_load_callbacks(options, array_size(options));
 }

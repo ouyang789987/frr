@@ -136,6 +136,7 @@ struct option longopts[] =
 
 const char *babel_yang_modules[] =
   {
+    "frr-interface",
   };
 
 FRR_DAEMON_INFO(babeld, BABELD,

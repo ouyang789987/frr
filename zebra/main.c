@@ -193,6 +193,7 @@ struct quagga_signal_t zebra_signals[] = {
 };
 
 const char *zebra_yang_modules[] = {
+	"frr-interface",
 };
 
 FRR_DAEMON_INFO(

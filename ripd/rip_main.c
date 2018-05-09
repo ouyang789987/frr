@@ -119,6 +119,7 @@ static struct quagga_signal_t ripd_signals[] = {
 };
 
 const char *ripd_yang_modules[] = {
+	"frr-interface",
 };
 
 FRR_DAEMON_INFO(ripd, RIP, .vty_port = RIP_VTY_PORT,

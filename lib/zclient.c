@@ -1620,7 +1620,7 @@ struct interface *zebra_interface_add_read(struct stream *s, vrf_id_t vrf_id)
 	stream_get(ifname_tmp, s, INTERFACE_NAMSIZ);
 
 	/* Lookup/create interface by name. */
-	ifp = if_get_by_name(ifname_tmp, vrf_id, 0);
+	ifp = if_get_by_name(ifname_tmp, vrf_id);
 
 	zebra_interface_if_set_value(s, ifp);
 

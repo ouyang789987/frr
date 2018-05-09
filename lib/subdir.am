@@ -9,6 +9,7 @@ lib_libfrr_la_SOURCES = \
 	lib/bfd.c \
 	lib/buffer.c \
 	lib/checksum.c \
+	lib/cli_commands.c \
 	lib/command.c \
 	lib/command_graph.c \
 	lib/command_lex.l \
@@ -91,6 +92,8 @@ lib_libfrr_la_LIBADD += -lsqlite3
 lib_libfrr_la_SOURCES += lib/db.c
 endif
 
+lib/cli_commands_clippy.c: $(CLIPPY_DEPS)
+lib/cli_commands.lo: lib/cli_commands_clippy.c
 lib/plist_clippy.c: $(CLIPPY_DEPS)
 lib/plist.lo: lib/plist_clippy.c
 lib/nexthop_group_clippy.c: $(CLIPPY_DEPS)
@@ -103,6 +106,7 @@ pkginclude_HEADERS += \
 	lib/bitfield.h \
 	lib/buffer.h \
 	lib/checksum.h \
+	lib/cli_commands.h \
 	lib/command.h \
 	lib/command_graph.h \
 	lib/command_match.h \

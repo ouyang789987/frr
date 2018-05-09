@@ -145,6 +145,7 @@ struct quagga_signal_t isisd_signals[] = {
 };
 
 const char *isisd_yang_modules[] = {
+	"frr-interface",
 };
 
 FRR_DAEMON_INFO(isisd, ISIS, .vty_port = ISISD_VTY_PORT,
