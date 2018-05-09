@@ -771,6 +771,76 @@ void cli_show_rip_timers(struct vty *vty, struct lyd_node *dnode,
 		children[1].value, children[2].value);
 }
 
+/*
+ * XPath: /frr-ripd:ripd/instance/version
+ */
+DEFPY (rip_version,
+       rip_version_cmd,
+       "version (1-2)",
+       "Set routing protocol version\n"
+       "version\n")
+{
+	struct cli_config_change changes[] = {
+		{
+			.xpath = "./version/receive",
+			.operation = NB_OP_MODIFY,
+			.value = version_str,
+		},
+		{
+			.xpath = "./version/send",
+			.operation = NB_OP_MODIFY,
+			.value = version_str,
+		},
+	};
+
+	return nb_cli_cfg_change(vty, NULL, changes, array_size(changes));
+}
+
+DEFPY (no_rip_version,
+       no_rip_version_cmd,
+       "no version [(1-2)]",
+       NO_STR
+       "Set routing protocol version\n"
+       "version\n")
+{
+	struct cli_config_change changes[] = {
+		{
+			.xpath = "./version/receive",
+			.operation = NB_OP_MODIFY,
+		},
+		{
+			.xpath = "./version/send",
+			.operation = NB_OP_MODIFY,
+		},
+	};
+
+	return nb_cli_cfg_change(vty, NULL, changes, array_size(changes));
+}
+
+void cli_show_rip_version(struct vty *vty, struct lyd_node *dnode,
+			  bool show_defaults)
+{
+	bool all_defaults;
+	struct yang_data children[] = {
+		{
+			.xpath = RIP_INSTANCE "/version/receive",
+		},
+		{
+			.xpath = RIP_INSTANCE "/version/send",
+		},
+	};
+
+	all_defaults =
+		yang_parse_children(dnode, children, array_size(children));
+	if (all_defaults && !show_defaults)
+		return;
+
+	if (strmatch(children[0].value, "1-2"))
+		vty_out(vty, " no version\n");
+	else
+		vty_out(vty, " version %s\n", children[1].value);
+}
+
 void rip_cli_init(void)
 {
 	install_element(CONFIG_NODE, &router_rip_cmd);
@@ -796,4 +866,6 @@ void rip_cli_init(void)
 	install_element(RIP_NODE, &rip_route_cmd);
 	install_element(RIP_NODE, &rip_timers_cmd);
 	install_element(RIP_NODE, &no_rip_timers_cmd);
+	install_element(RIP_NODE, &rip_version_cmd);
+	install_element(RIP_NODE, &no_rip_version_cmd);
 }

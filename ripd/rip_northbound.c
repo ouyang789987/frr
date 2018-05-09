@@ -701,7 +701,6 @@ static int ripd_instance_version_receive_modify(enum nb_event event,
 						const struct lyd_node *dnode,
 						union nb_resource *resource)
 {
-	/* TODO: implement me. */
 	return NB_OK;
 }
 
@@ -712,7 +711,6 @@ static int ripd_instance_version_send_modify(enum nb_event event,
 					     const struct lyd_node *dnode,
 					     union nb_resource *resource)
 {
-	/* TODO: implement me. */
 	return NB_OK;
 }
 
@@ -1105,6 +1103,10 @@ void rip_northbound_init(void)
 			.xpath = "/frr-ripd:ripd/instance/timers/update-interval",
 			.cbs.modify = ripd_instance_timers_update_interval_modify,
 			.cbs.apply_finish = ripd_instance_timers_apply_finish,
+		},
+		{
+			.xpath = "/frr-ripd:ripd/instance/version",
+			.cbs.cli_show = cli_show_rip_version,
 		},
 		{
 			.xpath = "/frr-ripd:ripd/instance/version/receive",

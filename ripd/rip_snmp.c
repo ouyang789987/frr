@@ -402,10 +402,10 @@ static long rip2IfConfSend(struct rip_interface *ri)
 		return ripVersion2;
 	else if (ri->ri_send & RIPv1)
 		return ripVersion1;
-	else if (rip) {
-		if (rip->version_send == RIPv2)
+	else if (cfg_exists("/frr-ripd:ripd/instance")) {
+		if (cfg_get_enum(RIP_INSTANCE "/version/send") == RIPv2)
 			return ripVersion2;
-		else if (rip->version_send == RIPv1)
+		else if (cfg_get_enum(RIP_INSTANCE "/version/send") == RIPv1)
 			return ripVersion1;
 	}
 	return doNotSend;
@@ -423,8 +423,9 @@ static long rip2IfConfReceive(struct rip_interface *ri)
 	if (!ri->running)
 		return doNotReceive;
 
-	recvv = (ri->ri_receive == RI_RIP_UNSPEC) ? rip->version_recv
-						  : ri->ri_receive;
+	recvv = (ri->ri_receive == RI_RIP_UNSPEC)
+			? cfg_get_enum(RIP_INSTANCE "/version/receive")
+			: ri->ri_receive;
 	if (recvv == RI_RIP_VERSION_1_AND_2)
 		return rip1OrRip2;
 	else if (recvv & RIPv2)

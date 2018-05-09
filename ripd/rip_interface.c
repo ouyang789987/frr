@@ -209,8 +209,10 @@ static void rip_request_interface(struct interface *ifp)
 	/* If there is no version configuration in the interface,
 	   use rip's version setting. */
 	{
-		int vsend = ((ri->ri_send == RI_RIP_UNSPEC) ? rip->version_send
-							    : ri->ri_send);
+		int vsend =
+			((ri->ri_send == RI_RIP_UNSPEC)
+				 ? cfg_get_enum("%s/version/send", RIP_INSTANCE)
+				 : ri->ri_send);
 		if (vsend & RIPv1)
 			rip_request_interface_send(ifp, RIPv1);
 		if (vsend & RIPv2)

@@ -1896,8 +1896,9 @@ static int rip_read(struct thread *t)
 	}
 
 	/* RIP Version check. RFC2453, 4.6 and 5.1 */
-	vrecv = ((ri->ri_receive == RI_RIP_UNSPEC) ? rip->version_recv
-						   : ri->ri_receive);
+	vrecv = ((ri->ri_receive == RI_RIP_UNSPEC)
+			 ? cfg_get_enum("%s/version/receive", RIP_INSTANCE)
+			 : ri->ri_receive);
 	if (vrecv == RI_RIP_VERSION_NONE
 	    || ((packet->version == RIPv1) && !(vrecv & RIPv1))
 	    || ((packet->version == RIPv2) && !(vrecv & RIPv2))) {
@@ -2553,7 +2554,8 @@ static void rip_update_process(int route_type)
 			 * use rip's version setting.
 			 */
 			int vsend = ((ri->ri_send == RI_RIP_UNSPEC)
-					     ? rip->version_send
+					     ? cfg_get_enum("%s/version/send",
+							    RIP_INSTANCE)
 					     : ri->ri_send);
 
 			if (IS_RIP_DEBUG_EVENT)
@@ -2722,10 +2724,6 @@ int rip_create(int socket)
 {
 	rip = XCALLOC(MTYPE_RIP, sizeof(struct rip));
 
-	/* Set initial value. */
-	rip->version_send = RI_RIP_VERSION_2;
-	rip->version_recv = RI_RIP_VERSION_1_AND_2;
-
 	/* Initialize RIP routig table. */
 	rip->table = route_table_init();
 
@@ -2840,40 +2838,6 @@ void rip_event(enum rip_event event, int sock)
 	default:
 		break;
 	}
-}
-
-DEFUN (rip_version,
-       rip_version_cmd,
-       "version (1-2)",
-       "Set routing protocol version\n"
-       "version\n")
-{
-	int idx_number = 1;
-	int version;
-
-	version = atoi(argv[idx_number]->arg);
-	if (version != RIPv1 && version != RIPv2) {
-		vty_out(vty, "invalid rip version %d\n", version);
-		return CMD_WARNING_CONFIG_FAILED;
-	}
-	rip->version_send = version;
-	rip->version_recv = version;
-
-	return CMD_SUCCESS;
-}
-
-DEFUN (no_rip_version,
-       no_rip_version_cmd,
-       "no version [(1-2)]",
-       NO_STR
-       "Set routing protocol version\n"
-       "Version\n")
-{
-	/* Set RIP version to the default. */
-	rip->version_send = RI_RIP_VERSION_2;
-	rip->version_recv = RI_RIP_VERSION_1_AND_2;
-
-	return CMD_SUCCESS;
 }
 
 #if 0
@@ -3213,12 +3177,13 @@ DEFUN (show_ip_rip_status,
 	vty_out(vty, "\n");
 
 	vty_out(vty, "  Default version control: send version %s,",
-		lookup_msg(ri_version_msg, rip->version_send, NULL));
-	if (rip->version_recv == RI_RIP_VERSION_1_AND_2)
+		cfg_get_string("%s/version/send", RIP_INSTANCE));
+	if (cfg_get_enum("%s/version/receive", RIP_INSTANCE)
+	    == RI_RIP_VERSION_1_AND_2)
 		vty_out(vty, " receive any version \n");
 	else
 		vty_out(vty, " receive version %s \n",
-			lookup_msg(ri_version_msg, rip->version_recv, NULL));
+			cfg_get_string("%s/version/receive", RIP_INSTANCE));
 
 	vty_out(vty, "    Interface        Send  Recv   Key-chain\n");
 
@@ -3230,17 +3195,15 @@ DEFUN (show_ip_rip_status,
 
 		if (ri->enable_network || ri->enable_interface) {
 			if (ri->ri_send == RI_RIP_UNSPEC)
-				send_version =
-					lookup_msg(ri_version_msg,
-						   rip->version_send, NULL);
+				send_version = cfg_get_string("%s/version/send",
+							      RIP_INSTANCE);
 			else
 				send_version = lookup_msg(ri_version_msg,
 							  ri->ri_send, NULL);
 
 			if (ri->ri_receive == RI_RIP_UNSPEC)
-				receive_version =
-					lookup_msg(ri_version_msg,
-						   rip->version_recv, NULL);
+				receive_version = cfg_get_string(
+					"%s/version/receive", RIP_INSTANCE);
 			else
 				receive_version = lookup_msg(
 					ri_version_msg, ri->ri_receive, NULL);
@@ -3292,11 +3255,6 @@ static int config_write_rip(struct vty *vty)
 		write++;
 
 		nb_cli_show_dnode_cmds(vty, dnode, false);
-
-		/* RIP version statement.  Default is RIP version 2. */
-		if (rip->version_send != RI_RIP_VERSION_2
-		    || rip->version_recv != RI_RIP_VERSION_1_AND_2)
-			vty_out(vty, " version %d\n", rip->version_send);
 
 		/* Distribute configuration. */
 		write += config_write_distribute(vty);
@@ -3556,8 +3514,6 @@ void rip_init(void)
 	install_element(VIEW_NODE, &show_ip_rip_status_cmd);
 
 	install_default(RIP_NODE);
-	install_element(RIP_NODE, &rip_version_cmd);
-	install_element(RIP_NODE, &no_rip_version_cmd);
 
 	/* Debug related init. */
 	rip_debug_init();

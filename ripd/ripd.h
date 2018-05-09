@@ -104,10 +104,6 @@ struct rip {
 	/* RIP socket. */
 	int sock;
 
-	/* Default version of rip instance. */
-	int version_send; /* version 1 or 2 (but not both) */
-	int version_recv; /* version 1 or 2 or both */
-
 	/* Output buffer of RIP. */
 	struct stream *obuf;
 
