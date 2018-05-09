@@ -122,9 +122,6 @@ struct rip {
 	/* RIP only static routing information. */
 	struct route_table *route;
 
-	/* RIP neighbor. */
-	struct route_table *neighbor;
-
 	/* RIP threads. */
 	struct thread *t_read;
 

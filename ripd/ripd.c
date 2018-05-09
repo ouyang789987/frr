@@ -2449,6 +2449,32 @@ static void rip_update_interface(struct connected *ifc, uint8_t version,
 	}
 }
 
+static void rip_neighbor_send_update(const struct lyd_node *dnode, void *arg)
+{
+	struct in_addr addr;
+	int *route_type = arg;
+	struct connected *connected;
+	struct sockaddr_in to;
+
+	yang_dnode_get_ipv4(dnode, &addr);
+
+	connected = if_lookup_address(&addr, AF_INET, VRF_DEFAULT);
+	if (!connected) {
+		zlog_warn("Neighbor %s doesnt have connected interface!",
+			  inet_ntoa(addr));
+		return;
+	}
+
+	/* Set destination address and port */
+	memset(&to, 0, sizeof(struct sockaddr_in));
+	to.sin_addr = addr;
+	to.sin_port = htons(RIP_PORT_DEFAULT);
+
+	/* RIP version is rip's configuration. */
+	rip_output_process(connected, &to, *route_type,
+			   cfg_get_enum("%s/version/send", RIP_INSTANCE));
+}
+
 /* Update send to all interface and neighbor. */
 static void rip_update_process(int route_type)
 {
@@ -2457,9 +2483,6 @@ static void rip_update_process(int route_type)
 	struct connected *connected;
 	struct interface *ifp;
 	struct rip_interface *ri;
-	struct route_node *rp;
-	struct sockaddr_in to;
-	struct prefix *p;
 
 	/* Send RIP update to each interface. */
 	FOR_ALL_INTERFACES (vrf, ifp) {
@@ -2510,28 +2533,8 @@ static void rip_update_process(int route_type)
 	}
 
 	/* RIP send updates to each neighbor. */
-	for (rp = route_top(rip->neighbor); rp; rp = route_next(rp))
-		if (rp->info != NULL) {
-			p = &rp->p;
-
-			connected = if_lookup_address(&p->u.prefix4, AF_INET,
-						      VRF_DEFAULT);
-			if (!connected) {
-				zlog_warn(
-					"Neighbor %s doesnt have connected interface!",
-					inet_ntoa(p->u.prefix4));
-				continue;
-			}
-
-			/* Set destination address and port */
-			memset(&to, 0, sizeof(struct sockaddr_in));
-			to.sin_addr = p->u.prefix4;
-			to.sin_port = htons(RIP_PORT_DEFAULT);
-
-			/* RIP version is rip's configuration. */
-			rip_output_process(connected, &to, route_type,
-					   rip->version_send);
-		}
+	cfg_iterate(RIP_INSTANCE "/explicit-neighbor", rip_neighbor_send_update,
+		    &route_type);
 }
 
 /* RIP's periodical timer. */
@@ -2682,7 +2685,6 @@ int rip_create(int socket)
 	/* Initialize RIP routig table. */
 	rip->table = route_table_init();
 	rip->route = route_table_init();
-	rip->neighbor = route_table_init();
 
 	/* Make output stream. */
 	rip->obuf = stream_new(1500);
@@ -3567,20 +3569,12 @@ void rip_clean(void)
 				route_unlock_node(rp);
 			}
 
-		/* RIP neighbor configuration. */
-		for (rp = route_top(rip->neighbor); rp; rp = route_next(rp))
-			if (rp->info) {
-				rp->info = NULL;
-				route_unlock_node(rp);
-			}
-
 		for (i = 0; i < ZEBRA_ROUTE_MAX; i++)
 			if (rip->route_map[i].name)
 				free(rip->route_map[i].name);
 
 		XFREE(MTYPE_ROUTE_TABLE, rip->table);
 		XFREE(MTYPE_ROUTE_TABLE, rip->route);
-		XFREE(MTYPE_ROUTE_TABLE, rip->neighbor);
 
 		XFREE(MTYPE_RIP, rip);
 		rip = NULL;

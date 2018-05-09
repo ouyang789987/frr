@@ -219,39 +219,6 @@ static void rip_request_interface(struct interface *ifp)
 	}
 }
 
-#if 0
-/* Send RIP request to the neighbor. */
-static void
-rip_request_neighbor (struct in_addr addr)
-{
-  struct sockaddr_in to;
-
-  memset (&to, 0, sizeof (struct sockaddr_in));
-  to.sin_port = htons (RIP_PORT_DEFAULT);
-  to.sin_addr = addr;
-
-  rip_request_send (&to, NULL, rip->version_send, NULL);
-}
-
-/* Request routes at all interfaces. */
-static void
-rip_request_neighbor_all (void)
-{
-  struct route_node *rp;
-
-  if (! rip)
-    return;
-
-  if (IS_RIP_DEBUG_EVENT)
-    zlog_debug ("request to the all neighbor");
-
-  /* Send request to all neighbor. */
-  for (rp = route_top (rip->neighbor); rp; rp = route_next (rp))
-    if (rp->info)
-      rip_request_neighbor (rp->p.u.prefix4);
-}
-#endif
-
 /* Multicast packet receive socket. */
 static int rip_multicast_join(struct interface *ifp, int sock)
 {
@@ -993,56 +960,8 @@ void rip_enable_apply_all()
 
 int rip_neighbor_lookup(struct sockaddr_in *from)
 {
-	struct prefix_ipv4 p;
-	struct route_node *node;
-
-	memset(&p, 0, sizeof(struct prefix_ipv4));
-	p.family = AF_INET;
-	p.prefix = from->sin_addr;
-	p.prefixlen = IPV4_MAX_BITLEN;
-
-	node = route_node_lookup(rip->neighbor, (struct prefix *)&p);
-	if (node) {
-		route_unlock_node(node);
-		return 1;
-	}
-	return 0;
-}
-
-/* Add new RIP neighbor to the neighbor tree. */
-static int rip_neighbor_add(struct prefix_ipv4 *p)
-{
-	struct route_node *node;
-
-	node = route_node_get(rip->neighbor, (struct prefix *)p);
-
-	if (node->info)
-		return -1;
-
-	node->info = rip->neighbor;
-
-	return 0;
-}
-
-/* Delete RIP neighbor from the neighbor tree. */
-static int rip_neighbor_delete(struct prefix_ipv4 *p)
-{
-	struct route_node *node;
-
-	/* Lock for look up. */
-	node = route_node_lookup(rip->neighbor, (struct prefix *)p);
-	if (!node)
-		return -1;
-
-	node->info = NULL;
-
-	/* Unlock lookup lock. */
-	route_unlock_node(node);
-
-	/* Unlock real neighbor information lock. */
-	route_unlock_node(node);
-
-	return 0;
+	return cfg_exists("%s/explicit-neighbor[.='%s']", RIP_INSTANCE,
+			  inet_ntoa(from->sin_addr));
 }
 
 /* Clear all network and neighbor configuration. */
@@ -1202,53 +1121,6 @@ DEFUN (no_rip_network,
 			argv[idx_ipv4_word]->arg);
 		return CMD_WARNING_CONFIG_FAILED;
 	}
-
-	return CMD_SUCCESS;
-}
-
-/* RIP neighbor configuration set. */
-DEFUN (rip_neighbor,
-       rip_neighbor_cmd,
-       "neighbor A.B.C.D",
-       "Specify a neighbor router\n"
-       "Neighbor address\n")
-{
-	int idx_ipv4 = 1;
-	int ret;
-	struct prefix_ipv4 p;
-
-	ret = str2prefix_ipv4(argv[idx_ipv4]->arg, &p);
-
-	if (ret <= 0) {
-		vty_out(vty, "Please specify address by A.B.C.D\n");
-		return CMD_WARNING_CONFIG_FAILED;
-	}
-
-	rip_neighbor_add(&p);
-
-	return CMD_SUCCESS;
-}
-
-/* RIP neighbor configuration unset. */
-DEFUN (no_rip_neighbor,
-       no_rip_neighbor_cmd,
-       "no neighbor A.B.C.D",
-       NO_STR
-       "Specify a neighbor router\n"
-       "Neighbor address\n")
-{
-	int idx_ipv4 = 2;
-	int ret;
-	struct prefix_ipv4 p;
-
-	ret = str2prefix_ipv4(argv[idx_ipv4]->arg, &p);
-
-	if (ret <= 0) {
-		vty_out(vty, "Please specify address by A.B.C.D\n");
-		return CMD_WARNING_CONFIG_FAILED;
-	}
-
-	rip_neighbor_delete(&p);
 
 	return CMD_SUCCESS;
 }
@@ -1815,6 +1687,15 @@ static int rip_interface_config_write(struct vty *vty)
 	return 0;
 }
 
+static void write_rip_network_status(const struct lyd_node *dnode, void *arg)
+{
+	struct vty *vty = arg;
+	const char *value;
+
+	value = yang_dnode_get_string(dnode);
+	vty_out(vty, "    %s\n", value);
+}
+
 int config_write_rip_network(struct vty *vty, int config_mode)
 {
 	unsigned int i;
@@ -1837,11 +1718,9 @@ int config_write_rip_network(struct vty *vty, int config_mode)
 				config_mode ? " network " : "    ", ifname);
 
 	/* RIP neighbors listing. */
-	for (node = route_top(rip->neighbor); node; node = route_next(node))
-		if (node->info)
-			vty_out(vty, "%s%s\n",
-				config_mode ? " neighbor " : "    ",
-				inet_ntoa(node->p.u.prefix4));
+	if (!config_mode)
+		cfg_iterate(RIP_INSTANCE "/explicit-neighbor",
+			    write_rip_network_status, vty);
 
 	/* RIP passive interface listing. */
 	if (config_mode) {
@@ -1897,8 +1776,6 @@ void rip_if_init(void)
 	/* Install commands. */
 	install_element(RIP_NODE, &rip_network_cmd);
 	install_element(RIP_NODE, &no_rip_network_cmd);
-	install_element(RIP_NODE, &rip_neighbor_cmd);
-	install_element(RIP_NODE, &no_rip_neighbor_cmd);
 
 	install_element(RIP_NODE, &rip_passive_interface_cmd);
 	install_element(RIP_NODE, &no_rip_passive_interface_cmd);

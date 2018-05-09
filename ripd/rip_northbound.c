@@ -299,14 +299,12 @@ static int ripd_instance_explicit_neighbor_create(enum nb_event event,
 						  const struct lyd_node *dnode,
 						  union nb_resource *resource)
 {
-	/* TODO: implement me. */
 	return NB_OK;
 }
 
 static int ripd_instance_explicit_neighbor_delete(enum nb_event event,
 						  const struct lyd_node *dnode)
 {
-	/* TODO: implement me. */
 	return NB_OK;
 }
 
@@ -885,6 +883,7 @@ void rip_northbound_init(void)
 			.xpath = "/frr-ripd:ripd/instance/explicit-neighbor",
 			.cbs.create = ripd_instance_explicit_neighbor_create,
 			.cbs.delete = ripd_instance_explicit_neighbor_delete,
+			.cbs.cli_show = cli_show_rip_neighbor,
 		},
 		{
 			.xpath = "/frr-ripd:ripd/instance/network",
