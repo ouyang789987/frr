@@ -1,0 +1,42 @@
+{
+	"frr-interface:lib": {
+		"interface": [
+			{
+				"name": "eth0",
+				"vrf": "Default-IP-Routing-Table",
+				"description": "engineering",
+				"frr-ripd:rip": {
+					"split-horizon": "poison-reverse",
+					"version-receive": "1",
+					"version-send": "1",
+					"v2-broadcast": "true"
+				}
+			},
+			{
+				"name": "eth1",
+				"vrf": "Default-IP-Routing-Table",
+				"description": "marketing"
+			}
+		]
+	},
+	"frr-ripd:ripd": {
+		"instance": {
+			"allow-ecmp": "true",
+			"static-route": ["10.0.1.0/24"],
+			"distance": {
+				"source": [
+					{
+						"prefix": "172.16.1.0/24",
+						"distance": "25"
+					}
+				]
+			},
+			"redistribute": [
+				{
+					"protocol": "ospf",
+					"metric": "3"
+				}
+			]
+		}
+	}
+}

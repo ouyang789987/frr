@@ -98,6 +98,12 @@
 #define RIP_AUTH_MD5_SIZE               16
 #define RIP_AUTH_MD5_COMPAT_SIZE        RIP_RTE_SIZE
 
+/* YANG paths */
+#define RIP_INSTANCE	"/frr-ripd:ripd/instance"
+#define RIP_TIMERS	RIP_INSTANCE "/timers"
+#define RIP_DISTANCE	RIP_INSTANCE "/distance"
+#define RIP_IFACE	"/frr-interface:lib/interface/frr-ripd:rip"
+
 /* RIP structure. */
 struct rip {
 	/* RIP socket. */
@@ -421,6 +427,9 @@ extern void rip_redistribute_clean(void);
 extern struct rip_info *rip_ecmp_add(struct rip_info *);
 extern struct rip_info *rip_ecmp_replace(struct rip_info *);
 extern struct rip_info *rip_ecmp_delete(struct rip_info *);
+
+extern void rip_northbound_init(void);
+extern void rip_cli_init(void);
 
 /* There is only one rip strucutre. */
 extern struct rip *rip;

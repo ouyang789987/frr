@@ -98,6 +98,7 @@ vtysh_scan += $(top_srcdir)/ospf6d/ospf6d.c
 endif
 
 if RIPD
+vtysh_scan += $(top_srcdir)/ripd/rip_cli.c
 vtysh_scan += $(top_srcdir)/ripd/rip_debug.c
 vtysh_scan += $(top_srcdir)/ripd/rip_interface.c
 vtysh_scan += $(top_srcdir)/ripd/rip_offset.c
