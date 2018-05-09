@@ -682,6 +682,95 @@ void cli_show_rip_route(struct vty *vty, struct lyd_node *dnode,
 	vty_out(vty, " route %s\n", yang_dnode_get_string(dnode));
 }
 
+/*
+ * XPath: /frr-ripd:ripd/instance/timers
+ */
+DEFPY (rip_timers,
+       rip_timers_cmd,
+       "timers basic (5-2147483647)$update (5-2147483647)$timeout (5-2147483647)$garbage",
+       "Adjust routing timers\n"
+       "Basic routing protocol update timers\n"
+       "Routing table update timer value in second. Default is 30.\n"
+       "Routing information timeout timer. Default is 180.\n"
+       "Garbage collection timer. Default is 120.\n")
+{
+	struct cli_config_change changes[] = {
+		{
+			.xpath = "./timers/update-interval",
+			.operation = NB_OP_MODIFY,
+			.value = update_str,
+		},
+		{
+			.xpath = "./timers/holddown-interval",
+			.operation = NB_OP_MODIFY,
+			.value = timeout_str,
+		},
+		{
+			.xpath = "./timers/flush-interval",
+			.operation = NB_OP_MODIFY,
+			.value = garbage_str,
+		},
+	};
+
+	return nb_cli_cfg_change(vty, NULL, changes, array_size(changes));
+}
+
+DEFPY (no_rip_timers,
+       no_rip_timers_cmd,
+       "no timers basic [(5-2147483647) (5-2147483647) (5-2147483647)]",
+       NO_STR
+       "Adjust routing timers\n"
+       "Basic routing protocol update timers\n"
+       "Routing table update timer value in second. Default is 30.\n"
+       "Routing information timeout timer. Default is 180.\n"
+       "Garbage collection timer. Default is 120.\n")
+{
+	struct cli_config_change changes[] = {
+		{
+			.xpath = "./timers/update-interval",
+			.operation = NB_OP_MODIFY,
+			.value =  NULL,
+		},
+		{
+			.xpath = "./timers/holddown-interval",
+			.operation = NB_OP_MODIFY,
+			.value =  NULL,
+		},
+		{
+			.xpath = "./timers/flush-interval",
+			.operation = NB_OP_MODIFY,
+			.value =  NULL,
+		},
+	};
+
+	return nb_cli_cfg_change(vty, NULL, changes, array_size(changes));
+}
+
+void cli_show_rip_timers(struct vty *vty, struct lyd_node *dnode,
+			 bool show_defaults)
+{
+	bool all_defaults;
+	struct yang_data children[] = {
+		{
+			.xpath = RIP_TIMERS "/update-interval",
+		},
+		{
+			.xpath = RIP_TIMERS "/holddown-interval",
+		},
+		{
+			.xpath = RIP_TIMERS "/flush-interval",
+		},
+	};
+
+	all_defaults =
+		yang_parse_children(dnode, children, array_size(children));
+	if (all_defaults && !show_defaults)
+		return;
+
+	vty_out(vty, " timers basic %s %s %s\n", children[0].value,
+		children[1].value, children[2].value);
+}
+
 void rip_cli_init(void)
 {
 	install_element(CONFIG_NODE, &router_rip_cmd);
@@ -705,4 +794,6 @@ void rip_cli_init(void)
 	install_element(RIP_NODE, &rip_redistribute_cmd);
 	install_element(RIP_NODE, &no_rip_redistribute_cmd);
 	install_element(RIP_NODE, &rip_route_cmd);
+	install_element(RIP_NODE, &rip_timers_cmd);
+	install_element(RIP_NODE, &no_rip_timers_cmd);
 }

@@ -653,6 +653,15 @@ static int ripd_instance_static_route_delete(enum nb_event event,
 }
 
 /*
+ * XPath: /frr-ripd:ripd/instance/timers/
+ */
+static void ripd_instance_timers_apply_finish(void)
+{
+	/* Reset update timer thread. */
+	rip_event(RIP_UPDATE_EVENT, 0);
+}
+
+/*
  * XPath: /frr-ripd:ripd/instance/timers/flush-interval
  */
 static int
@@ -660,7 +669,6 @@ ripd_instance_timers_flush_interval_modify(enum nb_event event,
 					   const struct lyd_node *dnode,
 					   union nb_resource *resource)
 {
-	/* TODO: implement me. */
 	return NB_OK;
 }
 
@@ -672,7 +680,6 @@ ripd_instance_timers_holddown_interval_modify(enum nb_event event,
 					      const struct lyd_node *dnode,
 					      union nb_resource *resource)
 {
-	/* TODO: implement me. */
 	return NB_OK;
 }
 
@@ -684,7 +691,6 @@ ripd_instance_timers_update_interval_modify(enum nb_event event,
 					    const struct lyd_node *dnode,
 					    union nb_resource *resource)
 {
-	/* TODO: implement me. */
 	return NB_OK;
 }
 
@@ -1082,16 +1088,23 @@ void rip_northbound_init(void)
 			.cbs.cli_show = cli_show_rip_route,
 		},
 		{
+			.xpath = "/frr-ripd:ripd/instance/timers",
+			.cbs.cli_show = cli_show_rip_timers,
+		},
+		{
 			.xpath = "/frr-ripd:ripd/instance/timers/flush-interval",
 			.cbs.modify = ripd_instance_timers_flush_interval_modify,
+			.cbs.apply_finish = ripd_instance_timers_apply_finish,
 		},
 		{
 			.xpath = "/frr-ripd:ripd/instance/timers/holddown-interval",
 			.cbs.modify = ripd_instance_timers_holddown_interval_modify,
+			.cbs.apply_finish = ripd_instance_timers_apply_finish,
 		},
 		{
 			.xpath = "/frr-ripd:ripd/instance/timers/update-interval",
 			.cbs.modify = ripd_instance_timers_update_interval_modify,
+			.cbs.apply_finish = ripd_instance_timers_apply_finish,
 		},
 		{
 			.xpath = "/frr-ripd:ripd/instance/version/receive",

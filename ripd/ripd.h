@@ -60,11 +60,6 @@
 #define INADDR_RIP_GROUP        0xe0000009    /* 224.0.0.9 */
 #endif
 
-/* RIP timers */
-#define RIP_UPDATE_TIMER_DEFAULT        30
-#define RIP_TIMEOUT_TIMER_DEFAULT      180
-#define RIP_GARBAGE_TIMER_DEFAULT      120
-
 /* RIP peer timeout value. */
 #define RIP_PEER_TIMER_DEFAULT         180
 
@@ -129,11 +124,6 @@ struct rip {
 	int trigger;
 	struct thread *t_triggered_update;
 	struct thread *t_triggered_interval;
-
-	/* RIP timer values. */
-	unsigned long update_time;
-	unsigned long timeout_time;
-	unsigned long garbage_time;
 
 	/* RIP default distance. */
 	struct route_table *distance_table;
@@ -380,6 +370,7 @@ extern void rip_enable_network_delete(struct prefix *p);
 extern void rip_enable_if_add(const char *ifname);
 extern void rip_enable_if_delete(const char *ifname);
 
+extern void rip_event(enum rip_event, int);
 extern void rip_ecmp_disable(void);
 
 extern int rip_create_socket(void);

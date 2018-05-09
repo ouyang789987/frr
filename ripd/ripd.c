@@ -63,7 +63,6 @@ long rip_global_route_changes = 0;
 long rip_global_queries = 0;
 
 /* Prototypes. */
-static void rip_event(enum rip_event, int);
 static void rip_output_process(struct connected *, struct sockaddr_in *, int,
 			       uint8_t);
 static int rip_triggered_update(struct thread *);
@@ -262,7 +261,7 @@ struct rip_info *rip_ecmp_delete(struct rip_info *rinfo)
 
 		rinfo->metric = RIP_METRIC_INFINITY;
 		RIP_TIMER_ON(rinfo->t_garbage_collect, rip_garbage_collect,
-			     rip->garbage_time);
+			     cfg_get_uint32("%s/flush-interval", RIP_TIMERS));
 
 		if (rip_route_rte(rinfo)
 		    && CHECK_FLAG(rinfo->flags, RIP_RTF_FIB))
@@ -290,7 +289,9 @@ static void rip_timeout_update(struct rip_info *rinfo)
 {
 	if (rinfo->metric != RIP_METRIC_INFINITY) {
 		RIP_TIMER_OFF(rinfo->t_timeout);
-		RIP_TIMER_ON(rinfo->t_timeout, rip_timeout, rip->timeout_time);
+		RIP_TIMER_ON(
+			rinfo->t_timeout, rip_timeout,
+			cfg_get_uint32("%s/holddown-interval", RIP_TIMERS));
 	}
 }
 
@@ -1587,7 +1588,8 @@ void rip_redistribute_delete(int type, int sub_type, struct prefix_ipv4 *p,
 				rinfo->metric = RIP_METRIC_INFINITY;
 				RIP_TIMER_ON(rinfo->t_garbage_collect,
 					     rip_garbage_collect,
-					     rip->garbage_time);
+					     cfg_get_uint32("%s/flush-interval",
+							    RIP_TIMERS));
 				RIP_TIMER_OFF(rinfo->t_timeout);
 				rinfo->flags |= RIP_RTF_CHANGED;
 
@@ -2692,7 +2694,8 @@ void rip_redistribute_withdraw(int type)
 				rinfo->metric = RIP_METRIC_INFINITY;
 				RIP_TIMER_ON(rinfo->t_garbage_collect,
 					     rip_garbage_collect,
-					     rip->garbage_time);
+					     cfg_get_uint32("%s/flush-interval",
+							    RIP_TIMERS));
 				RIP_TIMER_OFF(rinfo->t_timeout);
 				rinfo->flags |= RIP_RTF_CHANGED;
 
@@ -2722,9 +2725,6 @@ int rip_create(int socket)
 	/* Set initial value. */
 	rip->version_send = RI_RIP_VERSION_2;
 	rip->version_recv = RI_RIP_VERSION_1_AND_2;
-	rip->update_time = RIP_UPDATE_TIMER_DEFAULT;
-	rip->timeout_time = RIP_TIMEOUT_TIMER_DEFAULT;
-	rip->garbage_time = RIP_GARBAGE_TIMER_DEFAULT;
 
 	/* Initialize RIP routig table. */
 	rip->table = route_table_init();
@@ -2796,7 +2796,7 @@ static int rip_update_jitter(unsigned long time)
 	/* We want to get the jitter to +/- 1/JITTER_BOUND the interval.
 	   Given that, we cannot let time be less than JITTER_BOUND seconds.
 	   The RIPv2 RFC says jitter should be small compared to
-	   update_time.  We consider 1/JITTER_BOUND to be small.
+	   "timers/update-interval".  We consider 1/JITTER_BOUND to be small.
 	*/
 
 	int jitter_input = time;
@@ -2821,10 +2821,14 @@ void rip_event(enum rip_event event, int sock)
 		break;
 	case RIP_UPDATE_EVENT:
 		RIP_TIMER_OFF(rip->t_update);
-		jitter = rip_update_jitter(rip->update_time);
-		thread_add_timer(master, rip_update, NULL,
-				 sock ? 2 : rip->update_time + jitter,
-				 &rip->t_update);
+		jitter = rip_update_jitter(
+			cfg_get_uint32("%s/update-interval", RIP_TIMERS));
+		thread_add_timer(
+			master, rip_update, NULL,
+			sock ? 2
+			     : cfg_get_uint32("%s/update-interval", RIP_TIMERS)
+					+ jitter,
+			&rip->t_update);
 		break;
 	case RIP_TRIGGERED_UPDATE:
 		if (rip->t_triggered_interval)
@@ -2888,78 +2892,6 @@ rip_update_default_metric (void)
           rinfo->metric = cfg_get_uint8("%s/default-metric", RIP_INSTANCE);
 }
 #endif
-
-DEFUN (rip_timers,
-       rip_timers_cmd,
-       "timers basic (5-2147483647) (5-2147483647) (5-2147483647)",
-       "Adjust routing timers\n"
-       "Basic routing protocol update timers\n"
-       "Routing table update timer value in second. Default is 30.\n"
-       "Routing information timeout timer. Default is 180.\n"
-       "Garbage collection timer. Default is 120.\n")
-{
-	int idx_number = 2;
-	int idx_number_2 = 3;
-	int idx_number_3 = 4;
-	unsigned long update;
-	unsigned long timeout;
-	unsigned long garbage;
-	char *endptr = NULL;
-	unsigned long RIP_TIMER_MAX = 2147483647;
-	unsigned long RIP_TIMER_MIN = 5;
-
-	update = strtoul(argv[idx_number]->arg, &endptr, 10);
-	if (update > RIP_TIMER_MAX || update < RIP_TIMER_MIN
-	    || *endptr != '\0') {
-		vty_out(vty, "update timer value error\n");
-		return CMD_WARNING_CONFIG_FAILED;
-	}
-
-	timeout = strtoul(argv[idx_number_2]->arg, &endptr, 10);
-	if (timeout > RIP_TIMER_MAX || timeout < RIP_TIMER_MIN
-	    || *endptr != '\0') {
-		vty_out(vty, "timeout timer value error\n");
-		return CMD_WARNING_CONFIG_FAILED;
-	}
-
-	garbage = strtoul(argv[idx_number_3]->arg, &endptr, 10);
-	if (garbage > RIP_TIMER_MAX || garbage < RIP_TIMER_MIN
-	    || *endptr != '\0') {
-		vty_out(vty, "garbage timer value error\n");
-		return CMD_WARNING_CONFIG_FAILED;
-	}
-
-	/* Set each timer value. */
-	rip->update_time = update;
-	rip->timeout_time = timeout;
-	rip->garbage_time = garbage;
-
-	/* Reset update timer thread. */
-	rip_event(RIP_UPDATE_EVENT, 0);
-
-	return CMD_SUCCESS;
-}
-
-DEFUN (no_rip_timers,
-       no_rip_timers_cmd,
-       "no timers basic [(0-65535) (0-65535) (0-65535)]",
-       NO_STR
-       "Adjust routing timers\n"
-       "Basic routing protocol update timers\n"
-       "Routing table update timer value in second. Default is 30.\n"
-       "Routing information timeout timer. Default is 180.\n"
-       "Garbage collection timer. Default is 120.\n")
-{
-	/* Set each timer value to the default. */
-	rip->update_time = RIP_UPDATE_TIMER_DEFAULT;
-	rip->timeout_time = RIP_TIMEOUT_TIMER_DEFAULT;
-	rip->garbage_time = RIP_GARBAGE_TIMER_DEFAULT;
-
-	/* Reset update timer thread. */
-	rip_event(RIP_UPDATE_EVENT, 0);
-
-	return CMD_SUCCESS;
-}
 
 
 struct route_table *rip_distance_table;
@@ -3259,12 +3191,14 @@ DEFUN (show_ip_rip_status,
 		return CMD_SUCCESS;
 
 	vty_out(vty, "Routing Protocol is \"rip\"\n");
-	vty_out(vty, "  Sending updates every %ld seconds with +/-50%%,",
-		rip->update_time);
+	vty_out(vty, "  Sending updates every %s seconds with +/-50%%,",
+		cfg_get_string("%s/update-interval", RIP_TIMERS));
 	vty_out(vty, " next due in %lu seconds\n",
 		thread_timer_remain_second(rip->t_update));
-	vty_out(vty, "  Timeout after %ld seconds,", rip->timeout_time);
-	vty_out(vty, " garbage collect after %ld seconds\n", rip->garbage_time);
+	vty_out(vty, "  Timeout after %s seconds,",
+		cfg_get_string("%s/holddown-interval", RIP_TIMERS));
+	vty_out(vty, " garbage collect after %s seconds\n",
+		cfg_get_string("%s/flush-interval", RIP_TIMERS));
 
 	/* Filtering status show. */
 	config_show_distribute(vty);
@@ -3363,14 +3297,6 @@ static int config_write_rip(struct vty *vty)
 		if (rip->version_send != RI_RIP_VERSION_2
 		    || rip->version_recv != RI_RIP_VERSION_1_AND_2)
 			vty_out(vty, " version %d\n", rip->version_send);
-
-		/* RIP timer configuration. */
-		if (rip->update_time != RIP_UPDATE_TIMER_DEFAULT
-		    || rip->timeout_time != RIP_TIMEOUT_TIMER_DEFAULT
-		    || rip->garbage_time != RIP_GARBAGE_TIMER_DEFAULT)
-			vty_out(vty, " timers basic %lu %lu %lu\n",
-				rip->update_time, rip->timeout_time,
-				rip->garbage_time);
 
 		/* Distribute configuration. */
 		write += config_write_distribute(vty);
@@ -3632,8 +3558,6 @@ void rip_init(void)
 	install_default(RIP_NODE);
 	install_element(RIP_NODE, &rip_version_cmd);
 	install_element(RIP_NODE, &no_rip_version_cmd);
-	install_element(RIP_NODE, &rip_timers_cmd);
-	install_element(RIP_NODE, &no_rip_timers_cmd);
 
 	/* Debug related init. */
 	rip_debug_init();
