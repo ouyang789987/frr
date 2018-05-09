@@ -1321,7 +1321,7 @@ static void rip_response_process(struct rip_packet *packet, int size,
 }
 
 /* Make socket for RIP protocol. */
-static int rip_create_socket(void)
+int rip_create_socket(void)
 {
 	int ret;
 	int sock;
@@ -2666,7 +2666,7 @@ void rip_redistribute_withdraw(int type)
 }
 
 /* Create new RIP instance and set it to global variable. */
-static int rip_create(void)
+int rip_create(int socket)
 {
 	rip = XCALLOC(MTYPE_RIP, sizeof(struct rip));
 
@@ -2686,10 +2686,8 @@ static int rip_create(void)
 	/* Make output stream. */
 	rip->obuf = stream_new(1500);
 
-	/* Make socket. */
-	rip->sock = rip_create_socket();
-	if (rip->sock < 0)
-		return rip->sock;
+	/* Set socket. */
+	rip->sock = socket;
 
 	/* Create read and timer thread. */
 	rip_event(RIP_READ, rip->sock);
@@ -2792,39 +2790,6 @@ void rip_event(enum rip_event event, int sock)
 	default:
 		break;
 	}
-}
-
-DEFUN_NOSH (router_rip,
-       router_rip_cmd,
-       "router rip",
-       "Enable a routing process\n"
-       "Routing Information Protocol (RIP)\n")
-{
-	int ret;
-
-	/* If rip is not enabled before. */
-	if (!rip) {
-		ret = rip_create();
-		if (ret < 0) {
-			zlog_info("Can't create RIP");
-			return CMD_WARNING_CONFIG_FAILED;
-		}
-	}
-	VTY_PUSH_CONTEXT(RIP_NODE, rip);
-
-	return CMD_SUCCESS;
-}
-
-DEFUN (no_router_rip,
-       no_router_rip_cmd,
-       "no router rip",
-       NO_STR
-       "Enable a routing process\n"
-       "Routing Information Protocol (RIP)\n")
-{
-	if (rip)
-		rip_clean();
-	return CMD_SUCCESS;
 }
 
 DEFUN (rip_version,
@@ -3643,11 +3608,13 @@ static int config_write_rip(struct vty *vty)
 	int write = 0;
 	struct route_node *rn;
 	struct rip_distance *rdistance;
+	struct lyd_node *dnode;
 
-	if (rip) {
-		/* Router RIP statement. */
-		vty_out(vty, "router rip\n");
+	dnode = cfg_get_dnode("/frr-ripd:ripd/instance");
+	if (dnode) {
 		write++;
+
+		nb_cli_show_dnode_cmds(vty, dnode, false);
 
 		/* RIP version statement.  Default is RIP version 2. */
 		if (rip->version_send != RI_RIP_VERSION_2
@@ -3991,8 +3958,6 @@ void rip_init(void)
 	/* Install rip commands. */
 	install_element(VIEW_NODE, &show_ip_rip_cmd);
 	install_element(VIEW_NODE, &show_ip_rip_status_cmd);
-	install_element(CONFIG_NODE, &router_rip_cmd);
-	install_element(CONFIG_NODE, &no_router_rip_cmd);
 
 	install_default(RIP_NODE);
 	install_element(RIP_NODE, &rip_version_cmd);

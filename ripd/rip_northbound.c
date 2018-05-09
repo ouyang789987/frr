@@ -39,14 +39,36 @@ static int ripd_instance_create(enum nb_event event,
 				const struct lyd_node *dnode,
 				union nb_resource *resource)
 {
-	/* TODO: implement me. */
+	int socket;
+
+	switch (event) {
+	case NB_EV_PREPARE:
+		socket = rip_create_socket();
+		if (socket < 0)
+			return NB_ERR_RESOURCE;
+		resource->fd = socket;
+		break;
+	case NB_EV_ABORT:
+		socket = resource->fd;
+		close(socket);
+		break;
+	case NB_EV_APPLY:
+		socket = resource->fd;
+		rip_create(socket);
+		break;
+	}
+
 	return NB_OK;
 }
 
 static int ripd_instance_delete(enum nb_event event,
 				const struct lyd_node *dnode)
 {
-	/* TODO: implement me. */
+	if (event != NB_EV_APPLY)
+		return NB_OK;
+
+	rip_clean();
+
 	return NB_OK;
 }
 
@@ -703,6 +725,7 @@ void rip_northbound_init(void)
 			.xpath = "/frr-ripd:ripd/instance",
 			.cbs.create = ripd_instance_create,
 			.cbs.delete = ripd_instance_delete,
+			.cbs.cli_show = cli_show_router_rip,
 		},
 		{
 			.xpath = "/frr-ripd:ripd/instance/allow-ecmp",
