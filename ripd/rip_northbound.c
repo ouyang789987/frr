@@ -818,22 +818,37 @@ lib_interface_rip_authentication_key_chain_delete(enum nb_event event,
  */
 static void *ripd_state_neighbors_neighbor_get_next(void *element)
 {
-	/* TODO: implement me. */
-	return NULL;
+	struct listnode *node;
+
+	if (element == NULL)
+		node = listhead(peer_list);
+	else
+		node = listnextnode((struct listnode *)element);
+
+	return node;
 }
 
 static int ripd_state_neighbors_neighbor_get_keys(void *element,
 						  struct yang_list_keys *keys)
 {
-	/* TODO: implement me. */
+	struct listnode *node = element;
+	struct rip_peer *peer = listgetdata(node);
+
+	keys->num = 1;
+	(void)inet_ntop(AF_INET, &peer->addr, keys->key[0].value,
+			sizeof(keys->key[0].value));
+
 	return NB_OK;
 }
 
 static void *
 ripd_state_neighbors_neighbor_lookup_entry(struct yang_list_keys *keys)
 {
-	/* TODO: implement me. */
-	return NULL;
+	struct in_addr address;
+
+	yang_str2ipv4(keys->key[0].value, &address);
+
+	return rip_peer_lookup(&address);
 }
 
 /*
@@ -843,8 +858,9 @@ static struct yang_data *
 ripd_state_neighbors_neighbor_address_get_elem(const char *xpath,
 					       void *list_entry)
 {
-	/* TODO: implement me. */
-	return NULL;
+	struct rip_peer *peer = list_entry;
+
+	return yang_data_new_ipv4(xpath, &peer->addr);
 }
 
 /*
@@ -854,7 +870,7 @@ static struct yang_data *
 ripd_state_neighbors_neighbor_last_update_get_elem(const char *xpath,
 						   void *list_entry)
 {
-	/* TODO: implement me. */
+	/* TODO: yang:date-and-time is tricky */
 	return NULL;
 }
 
@@ -865,8 +881,9 @@ static struct yang_data *
 ripd_state_neighbors_neighbor_bad_packets_rcvd_get_elem(const char *xpath,
 							void *list_entry)
 {
-	/* TODO: implement me. */
-	return NULL;
+	struct rip_peer *peer = list_entry;
+
+	return yang_data_new_uint32(xpath, peer->recv_badpackets);
 }
 
 /*
@@ -876,8 +893,9 @@ static struct yang_data *
 ripd_state_neighbors_neighbor_bad_routes_rcvd_get_elem(const char *xpath,
 						       void *list_entry)
 {
-	/* TODO: implement me. */
-	return NULL;
+	struct rip_peer *peer = list_entry;
+
+	return yang_data_new_uint32(xpath, peer->recv_badroutes);
 }
 
 /*
