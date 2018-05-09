@@ -568,6 +568,93 @@ void cli_show_rip_non_passive_interface(struct vty *vty, struct lyd_node *dnode,
 		yang_dnode_get_string(dnode));
 }
 
+/*
+ * XPath: /frr-ripd:ripd/instance/redistribute
+ */
+DEFPY (rip_redistribute,
+       rip_redistribute_cmd,
+       "redistribute " FRR_REDIST_STR_RIPD "$protocol [{metric (0-16)|route-map WORD}]",
+       REDIST_STR
+       FRR_REDIST_HELP_STR_RIPD
+       "Metric\n"
+       "Metric value\n"
+       "Route map reference\n"
+       "Pointer to route-map entries\n")
+{
+	char xpath_list[XPATH_MAXLEN];
+	struct cli_config_change changes[] = {
+		{
+			.xpath = ".",
+			.operation = NB_OP_CREATE,
+		},
+		{
+			.xpath = "./route-map",
+			.operation = route_map ? NB_OP_MODIFY : NB_OP_DELETE,
+			.value = route_map,
+		},
+		{
+			.xpath = "./metric",
+			.operation = metric_str ? NB_OP_MODIFY : NB_OP_DELETE,
+			.value = metric_str,
+		},
+	};
+
+	snprintf(xpath_list, sizeof(xpath_list),
+		 "./redistribute[protocol='%s']", protocol);
+
+	return nb_cli_cfg_change(vty, xpath_list, changes, array_size(changes));
+}
+
+DEFPY (no_rip_redistribute,
+       no_rip_redistribute_cmd,
+       "no redistribute " FRR_REDIST_STR_RIPD "$protocol [{metric (0-16)|route-map WORD}]",
+       NO_STR
+       REDIST_STR
+       FRR_REDIST_HELP_STR_RIPD
+       "Metric\n"
+       "Metric value\n"
+       "Route map reference\n"
+       "Pointer to route-map entries\n")
+{
+	char xpath_list[XPATH_MAXLEN];
+	struct cli_config_change changes[] = {
+		{
+			.xpath = ".",
+			.operation = NB_OP_DELETE,
+		},
+	};
+
+	snprintf(xpath_list, sizeof(xpath_list),
+		 "./redistribute[protocol='%s']", protocol);
+
+	return nb_cli_cfg_change(vty, xpath_list, changes, array_size(changes));
+}
+
+void cli_show_rip_redistribute(struct vty *vty, struct lyd_node *dnode,
+			       bool show_defaults)
+{
+	struct yang_data children[] = {
+		{
+			.xpath = RIP_INSTANCE "/redistribute/protocol",
+		},
+		{
+			.xpath = RIP_INSTANCE "/redistribute/metric",
+		},
+		{
+			.xpath = RIP_INSTANCE "/redistribute/route-map",
+		},
+	};
+
+	yang_parse_children(dnode, children, array_size(children));
+
+	vty_out(vty, " redistribute %s", children[0].value);
+	if (children[1].value)
+		vty_out(vty, " metric %s", children[1].value);
+	if (children[2].value)
+		vty_out(vty, " route-map %s", children[2].value);
+	vty_out(vty, "\n");
+}
+
 void rip_cli_init(void)
 {
 	install_element(CONFIG_NODE, &router_rip_cmd);
@@ -588,4 +675,6 @@ void rip_cli_init(void)
 	install_element(RIP_NODE, &no_rip_offset_list_cmd);
 	install_element(RIP_NODE, &rip_passive_default_cmd);
 	install_element(RIP_NODE, &rip_passive_interface_cmd);
+	install_element(RIP_NODE, &rip_redistribute_cmd);
+	install_element(RIP_NODE, &no_rip_redistribute_cmd);
 }

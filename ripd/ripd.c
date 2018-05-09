@@ -2289,10 +2289,12 @@ void rip_output_process(struct connected *ifc, struct sockaddr_in *to,
 			}
 
 			/* Apply redistribute route map - continue, if deny */
-			if (rip->route_map[rinfo->type].name
+			if (cfg_exists("%s/redistribute[protocol='%s']",
+				       RIP_INSTANCE,
+				       zebra_route_string(rinfo->type))
 			    && rinfo->sub_type != RIP_ROUTE_INTERFACE) {
 				ret = route_map_apply(
-					rip->route_map[rinfo->type].map,
+					rip->route_map[rinfo->type],
 					(struct prefix *)p, RMAP_RIP, rinfo);
 
 				if (ret == RMAP_DENYMATCH) {
@@ -2307,12 +2309,16 @@ void rip_output_process(struct connected *ifc, struct sockaddr_in *to,
 
 			/* When route-map does not set metric. */
 			if (!rinfo->metric_set) {
+				uint8_t metric;
+
 				/* If redistribute metric is set. */
-				if (rip->route_map[rinfo->type].metric_config
+				if (cfg_get_optional_uint8(
+					    &metric,
+					    "%s/redistribute[protocol='%s']/metric",
+					    RIP_INSTANCE,
+					    zebra_route_string(rinfo->type))
 				    && rinfo->metric != RIP_METRIC_INFINITY) {
-					rinfo->metric_out =
-						rip->route_map[rinfo->type]
-							.metric;
+					rinfo->metric_out = metric;
 				} else {
 					/* If the route is not connected or
 					   localy generated
@@ -3346,7 +3352,7 @@ DEFUN (show_ip_rip_status,
 
 	/* Redistribute information. */
 	vty_out(vty, "  Redistributing:");
-	config_write_rip_redistribute(vty, 0);
+	rip_show_redistribute_config(vty);
 	vty_out(vty, "\n");
 
 	vty_out(vty, "  Default version control: send version %s,",
@@ -3443,9 +3449,6 @@ static int config_write_rip(struct vty *vty)
 			vty_out(vty, " timers basic %lu %lu %lu\n",
 				rip->update_time, rip->timeout_time,
 				rip->garbage_time);
-
-		/* Redistribute configuration. */
-		config_write_rip_redistribute(vty, 1);
 
 		/* Distribute configuration. */
 		write += config_write_distribute(vty);
@@ -3601,10 +3604,6 @@ void rip_clean(void)
 				route_unlock_node(rp);
 			}
 
-		for (i = 0; i < ZEBRA_ROUTE_MAX; i++)
-			if (rip->route_map[i].name)
-				free(rip->route_map[i].name);
-
 		XFREE(MTYPE_ROUTE_TABLE, rip->table);
 		XFREE(MTYPE_ROUTE_TABLE, rip->route);
 
@@ -3683,18 +3682,20 @@ void rip_if_rmap_update_interface(struct interface *ifp)
 		rip_if_rmap_update(if_rmap);
 }
 
-static void rip_routemap_update_redistribute(void)
+static void rip_routemap_update_redistribute(const struct lyd_node *dnode,
+					     void *arg)
 {
-	int i;
+	const char *protocol_str;
+	int protocol;
+	const char *route_map;
 
-	if (rip) {
-		for (i = 0; i < ZEBRA_ROUTE_MAX; i++) {
-			if (rip->route_map[i].name)
-				rip->route_map[i].map =
-					route_map_lookup_by_name(
-						rip->route_map[i].name);
-		}
-	}
+	protocol_str = yang_dnode_get_string(dnode);
+	protocol = yang_dnode_get_enum(dnode);
+
+	route_map = cfg_get_string("%s/redistribute[protocol='%s']/route-map",
+				   RIP_INSTANCE, protocol_str);
+
+	rip->route_map[protocol] = route_map_lookup_by_name(route_map);
 }
 
 /* ARGSUSED */
@@ -3706,7 +3707,8 @@ static void rip_routemap_update(const char *notused)
 	FOR_ALL_INTERFACES (vrf, ifp)
 		rip_if_rmap_update_interface(ifp);
 
-	rip_routemap_update_redistribute();
+	cfg_iterate(RIP_INSTANCE "/redistribute/protocol",
+		    rip_routemap_update_redistribute, NULL);
 }
 
 /* Allocate new rip structure and set default value. */
