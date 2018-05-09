@@ -382,6 +382,11 @@ extern int rip_request_send(struct sockaddr_in *, struct interface *, uint8_t,
 			    struct connected *);
 extern int rip_neighbor_lookup(struct sockaddr_in *);
 
+extern void rip_enable_network_add(struct prefix *p);
+extern void rip_enable_network_delete(struct prefix *p);
+extern void rip_enable_if_add(const char *ifname);
+extern void rip_enable_if_delete(const char *ifname);
+
 extern void rip_ecmp_disable(void);
 
 extern int rip_create_socket(void);

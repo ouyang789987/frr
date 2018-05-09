@@ -315,14 +315,30 @@ static int ripd_instance_network_create(enum nb_event event,
 					const struct lyd_node *dnode,
 					union nb_resource *resource)
 {
-	/* TODO: implement me. */
+	struct prefix p;
+
+	if (event != NB_EV_APPLY)
+		return NB_OK;
+
+	yang_dnode_get_ipv4p(dnode, &p);
+
+	rip_enable_network_add(&p);
+
 	return NB_OK;
 }
 
 static int ripd_instance_network_delete(enum nb_event event,
 					const struct lyd_node *dnode)
 {
-	/* TODO: implement me. */
+	struct prefix p;
+
+	if (event != NB_EV_APPLY)
+		return NB_OK;
+
+	yang_dnode_get_ipv4p(dnode, &p);
+
+	rip_enable_network_delete(&p);
+
 	return NB_OK;
 }
 
@@ -333,14 +349,30 @@ static int ripd_instance_interface_create(enum nb_event event,
 					  const struct lyd_node *dnode,
 					  union nb_resource *resource)
 {
-	/* TODO: implement me. */
+	const char *ifname;
+
+	if (event != NB_EV_APPLY)
+		return NB_OK;
+
+	ifname = yang_dnode_get_string(dnode);
+
+	rip_enable_if_add(ifname);
+
 	return NB_OK;
 }
 
 static int ripd_instance_interface_delete(enum nb_event event,
 					  const struct lyd_node *dnode)
 {
-	/* TODO: implement me. */
+	const char *ifname;
+
+	if (event != NB_EV_APPLY)
+		return NB_OK;
+
+	ifname = yang_dnode_get_string(dnode);
+
+	rip_enable_if_delete(ifname);
+
 	return NB_OK;
 }
 
@@ -889,11 +921,13 @@ void rip_northbound_init(void)
 			.xpath = "/frr-ripd:ripd/instance/network",
 			.cbs.create = ripd_instance_network_create,
 			.cbs.delete = ripd_instance_network_delete,
+			.cbs.cli_show = cli_show_rip_network_prefix,
 		},
 		{
 			.xpath = "/frr-ripd:ripd/instance/interface",
 			.cbs.create = ripd_instance_interface_create,
 			.cbs.delete = ripd_instance_interface_delete,
+			.cbs.cli_show = cli_show_rip_network_interface,
 		},
 		{
 			.xpath = "/frr-ripd:ripd/instance/offset-list",
