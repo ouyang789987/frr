@@ -232,6 +232,7 @@ enum nb_cfg_format {
 /* Northbound clients. */
 enum nb_client {
 	NB_CLIENT_CLI = 0,
+	NB_CLIENT_CONFD,
 };
 
 struct nb_config_change {
