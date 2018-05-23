@@ -134,6 +134,10 @@ struct option longopts[] =
     { 0 }
   };
 
+const char *babel_yang_modules[] =
+  {
+  };
+
 FRR_DAEMON_INFO(babeld, BABELD,
 		.vty_port = BABEL_VTY_PORT,
 		.proghelp = "Implementation of the BABEL routing protocol.",
@@ -142,6 +146,9 @@ FRR_DAEMON_INFO(babeld, BABELD,
 		.n_signals = array_size(babel_signals),
 
 		.privs = &babeld_privs,
+
+		.yang_modules = babel_yang_modules,
+		.n_yang_modules = array_size(babel_yang_modules),
 		)
 
 int
