@@ -233,6 +233,7 @@ enum nb_cfg_format {
 enum nb_client {
 	NB_CLIENT_CLI = 0,
 	NB_CLIENT_CONFD,
+	NB_CLIENT_SYSREPO,
 };
 
 struct nb_config_change {

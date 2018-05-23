@@ -1148,6 +1148,8 @@ const char *nb_client_name(enum nb_client client)
 		return "CLI";
 	case NB_CLIENT_CONFD:
 		return "ConfD";
+	case NB_CLIENT_SYSREPO:
+		return "Sysrepo";
 	default:
 		return "unknown";
 	}
