@@ -2686,9 +2686,10 @@ int rip_create(int socket)
 	rip->version_recv =
 		yang_get_default_enum("%s/version/receive", RIP_INSTANCE);
 
-	/* Initialize RIP routig table. */
+	/* Initialize RIP data structures. */
 	rip->table = route_table_init();
 	rip->neighbor = route_table_init();
+	rip->enable_interface = vector_init(1);
 
 	/* Make output stream. */
 	rip->obuf = stream_new(1500);
@@ -3359,6 +3360,7 @@ void rip_clean(void)
 
 	rip_clean_network();
 	rip_passive_nondefault_clean();
+	vector_free(rip->enable_interface);
 	rip_offset_clean();
 	rip_interfaces_clean();
 	rip_distance_reset();
