@@ -149,6 +149,9 @@ struct rip {
 	/* RIP enabled networks. */
 	struct route_table *enable_network;
 
+	/* Vector to store passive-interface name. */
+	vector passive_nondefault;
+
 	/* For redistribute route map. */
 	struct {
 		char *name;
@@ -476,7 +479,6 @@ DECLARE_HOOK(rip_ifaddr_del, (struct connected * ifc), (ifc))
 
 extern struct list *peer_list;
 extern struct route_table *rip_distance_table;
-extern vector Vrip_passive_nondefault;
 
 /* Northbound. */
 extern void rip_cli_init(void);

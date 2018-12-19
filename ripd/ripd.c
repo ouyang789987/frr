@@ -2691,6 +2691,7 @@ int rip_create(int socket)
 	rip->neighbor = route_table_init();
 	rip->enable_interface = vector_init(1);
 	rip->enable_network = route_table_init();
+	rip->passive_nondefault = vector_init(1);
 
 	/* Make output stream. */
 	rip->obuf = stream_new(1500);
@@ -3363,6 +3364,7 @@ void rip_clean(void)
 	rip_passive_nondefault_clean();
 	vector_free(rip->enable_interface);
 	route_table_finish(rip->enable_network);
+	vector_free(rip->passive_nondefault);
 	rip_offset_clean();
 	rip_interfaces_clean();
 	rip_distance_reset();
