@@ -174,3 +174,8 @@ int rip_peer_list_cmp(struct rip_peer *p1, struct rip_peer *p2)
 
 	return (htonl(p1->addr.s_addr) < htonl(p2->addr.s_addr)) ? -1 : 1;
 }
+
+void rip_peer_list_del(void *arg)
+{
+	rip_peer_free(arg);
+}
