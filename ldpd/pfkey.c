@@ -49,6 +49,8 @@ static int	 pfkey_md5sig_remove(struct nbr *);
 #define	ROUNDUP(x) (((x) + (PFKEY2_CHUNK - 1)) & ~(PFKEY2_CHUNK - 1))
 #define	IOV_CNT	20
 
+extern struct zebra_privs_t ldpe_privs;
+
 static uint32_t	 sadb_msg_seq;
 static uint32_t	 pid; /* should pid_t but pfkey needs uint32_t */
 static int	 fd;
@@ -455,6 +457,11 @@ pfkey_remove(struct nbr *nbr)
 int
 pfkey_init(void)
 {
+	frr_elevate_privs(&ldpe_privs) {
+		fd = socket(PF_KEY, SOCK_RAW | SOCK_CLOEXEC | SOCK_NONBLOCK,
+			    PF_KEY_V2);
+	}
+
 	if ((fd = socket(PF_KEY, SOCK_RAW | SOCK_CLOEXEC | SOCK_NONBLOCK,
 	    PF_KEY_V2)) == -1) {
 		if (errno == EPROTONOSUPPORT) {
