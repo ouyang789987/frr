@@ -1800,8 +1800,9 @@ int ripng_create(int socket)
 	ripng->ibuf = stream_new(RIPNG_MAX_PACKET_SIZE * 5);
 	ripng->obuf = stream_new(RIPNG_MAX_PACKET_SIZE);
 
-	/* Initialize RIPng routig table. */
+	/* Initialize RIPng data structures. */
 	ripng->table = agg_table_init();
+	ripng->enable_if = vector_init(1);
 
 	/* Make socket. */
 	ripng->sock = socket;
@@ -2446,6 +2447,7 @@ void ripng_clean()
 
 	ripng_clean_network();
 	ripng_passive_interface_clean();
+	vector_free(ripng->enable_if);
 	ripng_offset_clean();
 	ripng_interface_clean();
 	ripng_redistribute_clean();

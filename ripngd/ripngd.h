@@ -24,6 +24,7 @@
 
 #include <zclient.h>
 #include <vty.h>
+#include <vector.h>
 
 #include "ripng_memory.h"
 
@@ -105,6 +106,9 @@ struct ripng {
 
 	/* RIPng routing information base. */
 	struct agg_table *table;
+
+	/* RIPng enabled interfaces. */
+	vector enable_if;
 
 	/* RIPng threads. */
 	struct thread *t_read;
