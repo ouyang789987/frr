@@ -643,6 +643,18 @@ int sockopt_tcp_signature(int sock, union sockunion *su, const char *password)
 
 	memset(&md5sig, 0, sizeof(md5sig));
 	memcpy(&md5sig.tcpm_addr, su2, sizeof(*su2));
+
+	/* Ensure there is no extraneous port information. */
+	su2 = (union sockunion *)&md5sig.tcpm_addr;
+	switch (su2.sa.sa_family) {
+	case AF_INET:
+		su2.sin.sin_port = 0;
+		break;
+	case AF_INET6:
+		su2.sin6.sin6_port = 0;
+		break;
+	}
+
 	md5sig.tcpm_keylen = keylen;
 	if (keylen)
 		memcpy(md5sig.tcpm_key, password, keylen);

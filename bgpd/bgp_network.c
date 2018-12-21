@@ -68,20 +68,11 @@ static int bgp_md5_set_socket(int socket, union sockunion *su,
 {
 	int ret = -1;
 	int en = ENOSYS;
-#if HAVE_DECL_TCP_MD5SIG
-	union sockunion su2;
-#endif /* HAVE_TCP_MD5SIG */
 
 	assert(socket >= 0);
 
 #if HAVE_DECL_TCP_MD5SIG
-	/* Ensure there is no extraneous port information. */
-	memcpy(&su2, su, sizeof(union sockunion));
-	if (su2.sa.sa_family == AF_INET)
-		su2.sin.sin_port = 0;
-	else
-		su2.sin6.sin6_port = 0;
-	ret = sockopt_tcp_signature(socket, &su2, password);
+	ret = sockopt_tcp_signature(socket, su, password);
 	en = errno;
 #endif /* HAVE_TCP_MD5SIG */
 
