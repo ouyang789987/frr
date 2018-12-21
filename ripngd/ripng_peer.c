@@ -178,3 +178,8 @@ int ripng_peer_list_cmp(struct ripng_peer *p1, struct ripng_peer *p2)
 {
 	return memcmp(&p1->addr, &p2->addr, sizeof(struct in6_addr));
 }
+
+void ripng_peer_list_del(void *arg)
+{
+	ripng_peer_free(arg);
+}
