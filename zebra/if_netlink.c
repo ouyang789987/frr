@@ -684,8 +684,14 @@ static int netlink_interface(struct nlmsghdr *h, ns_id_t ns_id, int startup)
 	ifp->speed = get_iflink_speed(ifp);
 	ifp->ptm_status = ZEBRA_PTM_STATUS_UNKNOWN;
 
-	if (desc)
+	if (desc) {
+		/* Remove previous description if any. */
+		if (ifp->desc)
+			XFREE(MTYPE_TMP, ifp->desc);
+
+		/* Copy the interface description string. */
 		ifp->desc = XSTRDUP(MTYPE_TMP, desc);
+	}
 
 	/* Set zebra interface type */
 	zebra_if_set_ziftype(ifp, zif_type, zif_slave_type);
