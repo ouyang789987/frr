@@ -843,10 +843,11 @@ static void ifam_read_mesg(struct ifa_msghdr *ifm, union sockunion *addr,
 					      sizeof(buf[2])));
 		} break;
 		default:
-			zlog_debug("%s: ifindex %d, ifname %s, ifam_addrs 0x%x",
+			zlog_debug("%s: ifindex %d, ifname %s, ifam_addrs {%s}",
 				   __func__, ifm->ifam_index,
 				   (ifnlen ? ifname : "(nil)"),
-				   ifm->ifam_addrs);
+				   rtatostr(ifm->ifam_addrs, fbuf,
+					    sizeof(fbuf)));
 			break;
 		}
 	}
@@ -1293,12 +1294,14 @@ int rtm_write(int message, union sockunion *dest, union sockunion *mask,
 /* For debug purpose. */
 static void rtmsg_debug(struct rt_msghdr *rtm)
 {
+	char fbuf[64];
+
 	zlog_debug("Kernel: Len: %d Type: %s", rtm->rtm_msglen,
 		   lookup_msg(rtm_type_str, rtm->rtm_type, NULL));
 	rtm_flag_dump(rtm->rtm_flags);
 	zlog_debug("Kernel: message seq %d", rtm->rtm_seq);
-	zlog_debug("Kernel: pid %lld, rtm_addrs 0x%x", (long long)rtm->rtm_pid,
-		   rtm->rtm_addrs);
+	zlog_debug("Kernel: pid %lld, rtm_addrs {%s}", (long long)rtm->rtm_pid,
+		   rtatostr(rtm->rtm_addrs, fbuf, sizeof(fbuf)));
 }
 
 /* This is pretty gross, better suggestions welcome -- mhandler */
