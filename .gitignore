@@ -48,6 +48,7 @@
 *.pb.h
 *.pb-c.h
 *.pb-c.c
+*.pb.cc
 *_clippy.c
 
 ### dist
