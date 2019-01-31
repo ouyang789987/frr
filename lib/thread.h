@@ -37,8 +37,7 @@ struct rusage_t {
 #define GETRUSAGE(X) thread_getrusage(X)
 
 TYPEDLIST_MAKEITEM(thread_list)
-
-struct pqueue;
+TYPEDSKIP_MAKEITEM(thread_timer_list)
 
 struct fd_handler {
 	/* number of pfd that fit in the allocated space of pfds. This is a
@@ -69,7 +68,7 @@ struct thread_master {
 
 	struct thread **read;
 	struct thread **write;
-	struct pqueue *timer;
+	struct thread_timer_list_head timer;
 	struct thread_list_head event, ready, unuse;
 	struct list *cancel_req;
 	bool canceled;
@@ -91,6 +90,7 @@ struct thread {
 	uint8_t type;		  /* thread type */
 	uint8_t add_type;	  /* thread type */
 	struct thread_list_item threaditem;
+	struct thread_timer_list_item timeritem;
 	struct thread **ref;	  /* external reference (if given) */
 	struct thread_master *master; /* pointer to the struct thread_master */
 	int (*func)(struct thread *); /* event function */
@@ -100,7 +100,6 @@ struct thread {
 		int fd;		      /* file descriptor in case of r/w */
 		struct timeval sands; /* rest of time sands value. */
 	} u;
-	int index; /* queue position for timers */
 	struct timeval real;
 	struct cpu_thread_history *hist; /* cache pointer to cpu_history */
 	unsigned long yield;		 /* yield time in microseconds */
