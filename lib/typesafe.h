@@ -500,4 +500,130 @@ extern void typesafe_skiplist_del(struct sskip_head *head,
 			const struct sskip_item *a,
 			const struct sskip_item *b));
 
+/*
+ * The following Red-Black tree implementation is based off code with
+ * original copyright:
+ *
+ * Copyright (c) 2016 David Gwynne <dlg@openbsd.org>
+ *
+ * Permission to use, copy, modify, and distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ */
+
+#define RB_BLACK	0
+#define RB_RED		1
+
+struct typed_rb_entry {
+	struct typed_rb_entry *rbt_parent;
+	struct typed_rb_entry *rbt_left;
+	struct typed_rb_entry *rbt_right;
+	unsigned int rbt_color;
+};
+
+struct typed_rb_root {
+	struct typed_rb_entry *rbt_root;
+	size_t count;
+};
+
+void typed_rb_insert(struct typed_rb_root *, struct typed_rb_entry *rbe,
+		int (*cmpfn)(
+			const struct typed_rb_entry *a,
+			const struct typed_rb_entry *b));
+void typed_rb_remove(struct typed_rb_root *, struct typed_rb_entry *rbe);
+struct typed_rb_entry *typed_rb_find(struct typed_rb_root *,
+		const struct typed_rb_entry *rbe,
+		int (*cmpfn)(
+			const struct typed_rb_entry *a,
+			const struct typed_rb_entry *b));
+struct typed_rb_entry *typed_rb_find_gteq(struct typed_rb_root *,
+		const struct typed_rb_entry *rbe,
+		int (*cmpfn)(
+			const struct typed_rb_entry *a,
+			const struct typed_rb_entry *b));
+struct typed_rb_entry *typed_rb_min(struct typed_rb_root *);
+struct typed_rb_entry *typed_rb_next(struct typed_rb_entry *);
+
+#define TYPEDRB_MAKEITEM(prefix) \
+struct prefix ## _head { struct typed_rb_root rr; };                           \
+struct prefix ## _item { struct typed_rb_entry re; };
+
+#define TYPEDRB_MAKEFUNCS(prefix, type, field, cmpfn)                          \
+                                                                               \
+macro_inline int prefix ## _cmp(const struct typed_rb_entry *a,                \
+		const struct typed_rb_entry *b)                                \
+{                                                                              \
+	return cmpfn(const_container_of(a, type, field.re),                    \
+			const_container_of(b, type, field.re));                \
+}                                                                              \
+macro_inline void prefix ## _init(struct prefix##_head *h)                     \
+{                                                                              \
+	memset(h, 0, sizeof(*h));                                              \
+}                                                                              \
+macro_inline void prefix ## _fini(struct prefix##_head *h)                     \
+{                                                                              \
+	memset(h, 0, sizeof(*h));                                              \
+}                                                                              \
+macro_inline void prefix ## _add(struct prefix##_head *h, type *item)          \
+{                                                                              \
+	typed_rb_insert(&h->rr, &item->field.re, &prefix ## _cmp);             \
+}                                                                              \
+macro_inline type *prefix ## _find(struct prefix##_head *h, const type *item)  \
+{                                                                              \
+	struct typed_rb_entry *re;                                             \
+	re = typed_rb_find(&h->rr, &item->field.re, &prefix ## _cmp);          \
+	return re ? container_of(re, type, field.re) : NULL;                   \
+}                                                                              \
+macro_inline type *prefix ## _find_gteq(struct prefix##_head *h,               \
+		const type *item)                                              \
+{                                                                              \
+	struct typed_rb_entry *re;                                             \
+	re = typed_rb_find_gteq(&h->rr, &item->field.re, &prefix ## _cmp);     \
+	return re ? container_of(re, type, field.re) : NULL;                   \
+}                                                                              \
+macro_inline void prefix ## _del(struct prefix##_head *h, type *item)          \
+{                                                                              \
+	typed_rb_remove(&h->rr, &item->field.re);                              \
+}                                                                              \
+macro_inline type *prefix ## _pop(struct prefix##_head *h)                     \
+{                                                                              \
+	struct typed_rb_entry *re;                                             \
+	re = typed_rb_min(&h->rr);                                             \
+	if (!re)                                                               \
+		return NULL;                                                   \
+	typed_rb_remove(&h->rr, re);                                           \
+	return container_of(re, type, field.re);                               \
+}                                                                              \
+macro_inline type *prefix ## _first(struct prefix##_head *h)                   \
+{                                                                              \
+	struct typed_rb_entry *re;                                             \
+	re = typed_rb_min(&h->rr);                                             \
+	return re ? container_of(re, type, field.re) : NULL;                   \
+}                                                                              \
+macro_inline type *prefix ## _next(struct prefix##_head *h, type *item)        \
+{                                                                              \
+	struct typed_rb_entry *re;                                             \
+	re = typed_rb_next(&item->field.re);                                   \
+	return re ? container_of(re, type, field.re) : NULL;                   \
+}                                                                              \
+macro_inline type *prefix ## _next_safe(struct prefix##_head *h, type *item)   \
+{                                                                              \
+	struct typed_rb_entry *re;                                             \
+	re = item ? typed_rb_next(&item->field.re) : NULL;                     \
+	return re ? container_of(re, type, field.re) : NULL;                   \
+}                                                                              \
+macro_inline size_t prefix ## _count(struct prefix##_head *h)                  \
+{                                                                              \
+	return h->rr.count;                                                    \
+}                                                                              \
+/* ... */
+
 #endif /* _FRR_TYPESAFE_H */
