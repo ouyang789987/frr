@@ -285,8 +285,8 @@ static int nb_cli_commit(struct vty *vty, bool force,
 		return CMD_SUCCESS;
 	}
 
-	if (vty_exclusive_lock != NULL && vty_exclusive_lock != vty) {
-		vty_out(vty, "%% Configuration is locked by another VTY.\n\n");
+	if (nb_running_lock_check(NB_CLIENT_CLI, vty)) {
+		vty_out(vty, "%% Configuration is locked by another client.\n\n");
 		return CMD_WARNING;
 	}
 

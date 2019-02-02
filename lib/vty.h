@@ -291,7 +291,6 @@ struct vty_arg {
 
 /* Exported variables */
 extern char integrate_default[];
-extern struct vty *vty_exclusive_lock;
 
 /* Prototypes. */
 extern void vty_init(struct thread_master *);
@@ -322,8 +321,6 @@ extern void vty_log(const char *level, const char *proto, const char *fmt,
 extern int vty_config_enter(struct vty *vty, bool private_config,
 			    bool exclusive);
 extern void vty_config_exit(struct vty *);
-extern int vty_config_exclusive_lock(struct vty *vty);
-extern void vty_config_exclusive_unlock(struct vty *vty);
 extern int vty_shell(struct vty *);
 extern int vty_shell_serv(struct vty *);
 extern void vty_hello(struct vty *);

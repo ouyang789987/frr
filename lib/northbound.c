@@ -34,6 +34,21 @@ DEFINE_MTYPE_STATIC(LIB, NB_CONFIG, "Northbound Configuration")
 /* Running configuration - shouldn't be modified directly. */
 struct nb_config *running_config;
 
+/* Global lock for the running configuration. */
+static struct {
+	/* Mutex protecting this structure. */
+	pthread_mutex_t mtx;
+
+	/* Actual lock. */
+	bool locked;
+
+	/* Northbound client who owns this lock. */
+	enum nb_client owner_client;
+
+	/* Northbound user who owns this lock. */
+	const void *owner_user;
+} running_config_lock;
+
 /*
  * Global lock used to prevent multiple configuration transactions from
  * happening concurrently.
@@ -692,6 +707,60 @@ int nb_candidate_commit(struct nb_config *candidate, enum nb_client client,
 					  transaction_id);
 	else if (transaction != NULL)
 		nb_candidate_commit_abort(transaction);
+
+	return ret;
+}
+
+int nb_running_lock(enum nb_client client, const void *user)
+{
+	int ret = -1;
+
+	pthread_mutex_lock(&running_config_lock.mtx);
+	{
+		if (!running_config_lock.locked) {
+			running_config_lock.locked = true;
+			running_config_lock.owner_client = client;
+			running_config_lock.owner_user = user;
+			ret = 0;
+		}
+	}
+	pthread_mutex_unlock(&running_config_lock.mtx);
+
+	return ret;
+}
+
+int nb_running_unlock(enum nb_client client, const void *user)
+{
+	int ret = -1;
+
+	pthread_mutex_lock(&running_config_lock.mtx);
+	{
+		if (running_config_lock.locked
+		    && running_config_lock.owner_client == client
+		    && running_config_lock.owner_user == user) {
+			running_config_lock.locked = false;
+			running_config_lock.owner_client = NB_CLIENT_NONE;
+			running_config_lock.owner_user = NULL;
+			ret = 0;
+		}
+	}
+	pthread_mutex_unlock(&running_config_lock.mtx);
+
+	return ret;
+}
+
+int nb_running_lock_check(enum nb_client client, const void *user)
+{
+	int ret = -1;
+
+	pthread_mutex_lock(&running_config_lock.mtx);
+	{
+		if (!running_config_lock.locked
+		    || running_config_lock.owner_client != client
+		    || running_config_lock.owner_user != user)
+			ret = 0;
+	}
+	pthread_mutex_unlock(&running_config_lock.mtx);
 
 	return ret;
 }
@@ -1625,6 +1694,7 @@ void nb_init(struct thread_master *tm,
 
 	/* Create an empty running configuration. */
 	running_config = nb_config_new(NULL);
+	pthread_mutex_init(&running_config_lock.mtx, NULL);
 
 	/* Initialize the northbound CLI. */
 	nb_cli_init(tm);
@@ -1640,4 +1710,5 @@ void nb_terminate(void)
 
 	/* Delete the running configuration. */
 	nb_config_free(running_config);
+	pthread_mutex_destroy(&running_config_lock.mtx);
 }

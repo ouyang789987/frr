@@ -413,7 +413,8 @@ enum nb_error {
 
 /* Northbound clients. */
 enum nb_client {
-	NB_CLIENT_CLI = 0,
+	NB_CLIENT_NONE = 0,
+	NB_CLIENT_CLI,
 	NB_CLIENT_CONFD,
 	NB_CLIENT_SYSREPO,
 };
@@ -725,7 +726,33 @@ extern int nb_candidate_commit(struct nb_config *candidate,
 			       const char *comment, uint32_t *transaction_id);
 
 /*
- * Iterate over operetional data.
+ * Lock the running configuration.
+ *
+ * Returns:
+ *    0 on success, -1 when the running configuration is already locked.
+ */
+extern int nb_running_lock(enum nb_client client, const void *user);
+
+/*
+ * Unlock the running configuration.
+ *
+ * Returns:
+ *    0 on success, -1 when the running configuration is already unlocked.
+ */
+extern int nb_running_unlock(enum nb_client client, const void *user);
+
+/*
+ * Check if the running configuration is locked or not for the given
+ * client/user.
+ *
+ * Returns:
+ *    0 if the running configuration is unlocked or if the client/user owns the
+ *    lock, 0 otherwise.
+ */
+extern int nb_running_lock_check(enum nb_client client, const void *user);
+
+/*
+ * Iterate over operational data.
  *
  * xpath
  *    Data path of the YANG data we want to iterate over.
