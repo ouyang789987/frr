@@ -964,6 +964,9 @@ static void lsp_build(struct isis_lsp *lsp, struct isis_area *area)
 			  area->area_tag);
 	}
 
+	lsp_debug("ISIS (%s): Adding PPR TLV.", area->area_tag);
+	isis_tlvs_add_ppr(lsp->tlvs, ISIS_PPR_FLAG_S | ISIS_PPR_FLAG_LAST);
+
 	lsp_debug("ISIS (%s): Adding circuit specific information.",
 		  area->area_tag);
 

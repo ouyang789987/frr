@@ -123,6 +123,7 @@ const char *node_names[] = {
 	"ldp l2vpn",		    // LDP_L2VPN_NODE,
 	"ldp",			    // LDP_PSEUDOWIRE_NODE,
 	"isis",			    // ISIS_NODE,
+	"isis-ppr",		    // ISIS_NODE,
 	"ipv4 access list",	 // ACCESS_NODE,
 	"ipv4 prefix list",	 // PREFIX_NODE,
 	"ipv6 access list",	 // ACCESS_IPV6_NODE,
@@ -1468,6 +1469,9 @@ void cmd_exit(struct vty *vty)
 	case VTY_NODE:
 	case BFD_NODE:
 		vty->node = CONFIG_NODE;
+		break;
+	case ISIS_PPR_NODE:
+		vty->node = ISIS_NODE;
 		break;
 	case BGP_IPV4_NODE:
 	case BGP_IPV4M_NODE:

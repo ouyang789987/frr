@@ -196,6 +196,95 @@ struct isis_purge_originator {
 	uint8_t sender[6];
 };
 
+/* PPR */
+struct isis_ppr {
+	struct isis_ppr *next;
+
+	uint8_t flags;
+	uint8_t fragment_id;
+
+	struct isis_subtlvs *subtlvs;
+};
+#define ISIS_PPR_FLAG_S		0x80
+#define ISIS_PPR_FLAG_D		0x40
+#define ISIS_PPR_FLAG_A		0x20
+#define ISIS_PPR_FLAG_LAST	0x10
+
+/* PPR-Prefix */
+struct ppr_prefix {
+	uint16_t mtid;
+	struct prefix prefix;
+	/* TODO: PPR-Prefix Sub-TLVs */
+};
+
+/* PPR-ID */
+enum ppr_id_type {
+	PPR_ID_TYPE_MPLS = 1,
+	PPR_ID_TYPE_IPV4 = 2,
+	PPR_ID_TYPE_IPV6 = 3,
+	PPR_ID_TYPE_SRV6 = 4,
+};
+
+struct ppr_id {
+	enum ppr_id_type type;
+	union {
+		uint32_t mpls;
+		struct prefix prefix;
+	} id;
+	uint8_t algorithm;
+	uint16_t flags;
+};
+#define ISIS_PPR_ID_FLAG_LOOSE 0x8000
+#define ISIS_PPR_ID_FLAG_ALL 0x4000
+
+/* PPR-PDE */
+enum ppr_pde_type {
+	PPR_PDE_TYPE_TOPOLOGICAL = 1,
+	PPR_PDE_TYPE_NON_TOPOLOGICAL = 2,
+};
+
+enum ppr_pde_id_type {
+	PPR_PDE_ID_TYPE_SID_LABEL = 1,
+	PPR_PDE_ID_TYPE_SRMPLS_PREFIX_SID = 2,
+	PPR_PDE_ID_TYPE_SRMPLS_ADJ_SID = 3,
+	PPR_PDE_ID_TYPE_IPV4 = 4,
+	PPR_PDE_ID_TYPE_IPV6 = 5,
+	PPR_PDE_ID_TYPE_SRV6_NODE_SID = 6,
+	PPR_PDE_ID_TYPE_SRV6_ADJ_SID = 7,
+};
+
+struct ppr_pde {
+	struct ppr_pde *next;
+
+	enum ppr_pde_type type;
+	uint16_t flags;
+	enum ppr_pde_id_type id_type;
+	bool id_sid;
+	union {
+		uint32_t mpls;
+		struct in_addr ipv4;
+		struct in6_addr ipv6;
+	} id_value;
+};
+#define ISIS_PPR_PDE_FLAG_LOOSE 0x8000
+#define ISIS_PPR_PDE_FLAG_DEST 0x4000
+
+/* PPR-Attribute */
+struct ppr_attr {
+	struct ppr_attr *next;
+
+	unsigned int type;
+	union {
+		struct in_addr rid_v4;
+		struct in6_addr rid_v6;
+		uint32_t metric;
+	} value;
+};
+
+struct ppr_attrs {
+	struct isis_subtlvs *subtlvs;
+};
+
 enum isis_auth_result {
 	ISIS_AUTH_OK = 0,
 	ISIS_AUTH_TYPE_FAILURE,
@@ -234,6 +323,7 @@ struct isis_tlvs {
 	struct isis_mt_item_list mt_ipv6_reach;
 	struct isis_threeway_adj *threeway_adj;
 	struct isis_spine_leaf *spine_leaf;
+	struct isis_item_list ppr;
 };
 
 #define ISIS_PREFIX_SID_READVERTISED  0x80
@@ -258,6 +348,8 @@ enum isis_tlv_context {
 	ISIS_CONTEXT_SUBTLV_NE_REACH,
 	ISIS_CONTEXT_SUBTLV_IP_REACH,
 	ISIS_CONTEXT_SUBTLV_IPV6_REACH,
+	ISIS_CONTEXT_SUBTLV_PPR,
+	ISIS_CONTEXT_SUBTLV_PPR_ATTRS,
 	ISIS_CONTEXT_MAX
 };
 
@@ -268,6 +360,20 @@ struct isis_subtlvs {
 	struct prefix_ipv6 *source_prefix;
 	/* draft-ietf-isis-segment-routing-extensions-16 */
 	struct isis_item_list prefix_sids;
+	/* draft-chunduri-lsr-isis-preferred-path-routing-02 */
+	struct {
+		struct ppr_prefix *prefix;
+		struct ppr_id *id;
+		struct isis_item_list pdes;
+		struct ppr_attrs *attrs;
+		struct {
+			struct ppr_attr *stats_pkts;
+			struct ppr_attr *stats_bytes;
+			struct ppr_attr *rid_v4;
+			struct ppr_attr *rid_v6;
+			struct ppr_attr *metric;
+		} attr;
+	} ppr;
 };
 
 enum isis_tlv_type {
@@ -279,6 +385,8 @@ enum isis_tlv_type {
 	ISIS_TLV_AUTH = 10,
 	ISIS_TLV_PURGE_ORIGINATOR = 13,
 	ISIS_TLV_EXTENDED_REACH = 22,
+
+	ISIS_TLV_PPR = 100,
 
 	ISIS_TLV_OLDSTYLE_IP_REACH = 128,
 	ISIS_TLV_PROTOCOLS_SUPPORTED = 129,
@@ -298,7 +406,18 @@ enum isis_tlv_type {
 	ISIS_TLV_MAX = 256,
 
 	ISIS_SUBTLV_PREFIX_SID = 3,
-	ISIS_SUBTLV_IPV6_SOURCE_PREFIX = 22
+	ISIS_SUBTLV_IPV6_SOURCE_PREFIX = 22,
+
+	ISIS_SUBTLV_PPR_PREFIX = 1,
+	ISIS_SUBTLV_PPR_ID = 2,
+	ISIS_SUBTLV_PPR_PDE = 3,
+	ISIS_SUBTLV_PPR_ATTR = 4,
+
+	ISIS_SUBTLV_PPR_ATTR_STATS_PKTS = 1,
+	ISIS_SUBTLV_PPR_ATTR_STATS_BYTES = 2,
+	ISIS_SUBTLV_PPR_ATTR_RID_V4 = 3,
+	ISIS_SUBTLV_PPR_ATTR_RID_V6 = 4,
+	ISIS_SUBTLV_PPR_ATTR_METRIC = 5,
 };
 
 #define IS_COMPAT_MT_TLV(tlv_type)                                             \
@@ -339,6 +458,7 @@ void isis_tlvs_set_protocols_supported(struct isis_tlvs *tlvs,
 				       struct nlpids *nlpids);
 void isis_tlvs_add_mt_router_info(struct isis_tlvs *tlvs, uint16_t mtid,
 				  bool overload, bool attached);
+void isis_tlvs_add_ppr(struct isis_tlvs *tlvs, uint8_t flags);
 void isis_tlvs_add_ipv4_address(struct isis_tlvs *tlvs, struct in_addr *addr);
 void isis_tlvs_add_ipv4_addresses(struct isis_tlvs *tlvs,
 				  struct list *addresses);

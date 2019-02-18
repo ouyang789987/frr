@@ -1142,6 +1142,10 @@ static struct cmd_node isis_node = {
 	ISIS_NODE, "%s(config-router)# ",
 };
 
+static struct cmd_node isis_ppr_node = {
+	ISIS_PPR_NODE, "%s(config-router-ppr)# ",
+};
+
 static struct cmd_node openfabric_node = {
 	OPENFABRIC_NODE, "%s(config-router)# ",
 };
@@ -1653,6 +1657,39 @@ DEFUNSH(VTYSH_ISISD, router_isis, router_isis_cmd, "router isis WORD",
 	return CMD_SUCCESS;
 }
 
+DEFUNSH(VTYSH_ISISD, isis_ppr, isis_ppr_cmd,
+       "ppr id\
+          <\
+            mpls (16-1048575)\
+            |ipv4 A.B.C.D/M\
+            |ipv6 X:X::X:X/M\
+            |srv6 X:X::X:X/M\
+          >\
+	  [flags {S|D|A|L}]\
+	  [algorithm <spf|strict-spf>]",
+       "PPR\n"
+       "ID\n"
+       "MPLS\n"
+       "MPLS label\n"
+       "IPv4\n"
+       "IPv4 address\n"
+       "IPv6\n"
+       "IPv6 address\n"
+       "SRv6\n"
+       "IPv6 address\n"
+       "Flags\n"
+       "S flag\n"
+       "D flag\n"
+       "A flag\n"
+       "L flag\n"
+       "Algorithm\n"
+       "SPF\n"
+       "Strict SPF\n")
+{
+	vty->node = ISIS_PPR_NODE;
+	return CMD_SUCCESS;
+}
+
 DEFUNSH(VTYSH_FABRICD, router_openfabric, router_openfabric_cmd, "router openfabric WORD",
 	ROUTER_STR
 	"OpenFabric routing protocol\n"
@@ -1776,6 +1813,7 @@ static int vtysh_exit(struct vty *vty)
 	case LDP_NODE:
 	case LDP_L2VPN_NODE:
 	case ISIS_NODE:
+	case ISIS_PPR_NODE:
 	case OPENFABRIC_NODE:
 	case RMAP_NODE:
 	case PBRMAP_NODE:
@@ -3528,6 +3566,7 @@ void vtysh_init_vty(void)
 	install_node(&keychain_node, NULL);
 	install_node(&keychain_key_node, NULL);
 	install_node(&isis_node, NULL);
+	install_node(&isis_ppr_node, NULL);
 	install_node(&openfabric_node, NULL);
 	install_node(&vty_node, NULL);
 	install_node(&rpki_node, NULL);
@@ -3621,6 +3660,8 @@ void vtysh_init_vty(void)
 #endif
 	install_element(ISIS_NODE, &vtysh_exit_isisd_cmd);
 	install_element(ISIS_NODE, &vtysh_quit_isisd_cmd);
+	install_element(ISIS_PPR_NODE, &vtysh_exit_isisd_cmd);
+	install_element(ISIS_PPR_NODE, &vtysh_quit_isisd_cmd);
 	install_element(OPENFABRIC_NODE, &vtysh_exit_fabricd_cmd);
 	install_element(OPENFABRIC_NODE, &vtysh_quit_fabricd_cmd);
 	install_element(KEYCHAIN_NODE, &vtysh_exit_ripd_cmd);
@@ -3735,6 +3776,7 @@ void vtysh_init_vty(void)
 	install_element(CONFIG_NODE, &router_isis_cmd);
 	install_element(CONFIG_NODE, &router_openfabric_cmd);
 	install_element(CONFIG_NODE, &router_bgp_cmd);
+	install_element(ISIS_NODE, &isis_ppr_cmd);
 	install_element(BGP_NODE, &address_family_vpnv4_cmd);
 	install_element(BGP_NODE, &address_family_vpnv6_cmd);
 #if defined(ENABLE_BGP_VNC)

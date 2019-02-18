@@ -26,6 +26,7 @@
 #include "memory.h"
 #include "stream.h"
 #include "sbuf.h"
+#include "lib_errors.h"
 
 #include "isisd/isisd.h"
 #include "isisd/isis_memory.h"
@@ -36,6 +37,7 @@
 #include "isisd/isis_adjacency.h"
 #include "isisd/isis_circuit.h"
 #include "isisd/isis_pdu.h"
+#include "isisd/isis_ppr.h"
 #include "isisd/isis_lsp.h"
 #include "isisd/isis_te.h"
 
@@ -96,7 +98,19 @@ static struct pack_order_entry pack_order[] = {
 	PACK_ENTRY(EXTENDED_IP_REACH, ISIS_ITEMS, extended_ip_reach),
 	PACK_ENTRY(MT_IP_REACH, ISIS_MT_ITEMS, mt_ip_reach),
 	PACK_ENTRY(IPV6_REACH, ISIS_ITEMS, ipv6_reach),
-	PACK_ENTRY(MT_IPV6_REACH, ISIS_MT_ITEMS, mt_ipv6_reach)};
+	PACK_ENTRY(MT_IPV6_REACH, ISIS_MT_ITEMS, mt_ipv6_reach),
+	PACK_ENTRY(PPR, ISIS_ITEMS, ppr),
+};
+
+static struct isis_subtlvs *copy_subtlvs(struct isis_subtlvs *subtlvs);
+static void format_subtlvs(struct isis_subtlvs *subtlvs, struct sbuf *buf,
+			   int indent);
+static void isis_free_subtlvs(struct isis_subtlvs *subtlvs);
+static int pack_subtlvs(struct isis_subtlvs *subtlvs, struct stream *s);
+static int unpack_tlvs(enum isis_tlv_context context, size_t avail_len,
+		       struct stream *stream, struct sbuf *log, void *dest,
+		       int indent);
+static struct isis_subtlvs *isis_alloc_subtlvs(enum isis_tlv_context context);
 
 /* This is a forward definition. The table is actually initialized
  * in at the bottom. */
@@ -186,7 +200,7 @@ static int unpack_item_prefix_sid(uint16_t mtid, uint8_t len, struct stream *s,
 	sid.flags = stream_getc(s);
 	if ((sid.flags & ISIS_PREFIX_SID_VALUE)
 	    != (sid.flags & ISIS_PREFIX_SID_LOCAL)) {
-		sbuf_push(log, indent, "Flags inplausible: Local Flag needs to match Value Flag\n");
+		sbuf_push(log, indent, "Flags implausible: Local Flag needs to match Value Flag\n");
 		return 0;
 	}
 
@@ -274,7 +288,7 @@ static int unpack_subtlv_ipv6_source_prefix(enum isis_tlv_context context,
 
 	p.prefixlen = stream_getc(s);
 	if (p.prefixlen > 128) {
-		sbuf_push(log, indent, "Prefixlen %u is inplausible for IPv6\n",
+		sbuf_push(log, indent, "Prefixlen %u is implausible for IPv6\n",
 			  p.prefixlen);
 		return 1;
 	}
@@ -303,6 +317,817 @@ static int unpack_subtlv_ipv6_source_prefix(enum isis_tlv_context context,
 	memcpy(subtlvs->source_prefix, &p, sizeof(p));
 	return 0;
 }
+
+/* Functions for Sub-TVL 1 PPR-Prefix */
+
+static struct ppr_prefix *copy_subtlv_ppr_prefix(struct ppr_prefix *p)
+{
+	if (!p)
+		return NULL;
+
+	struct ppr_prefix *rv = XCALLOC(MTYPE_ISIS_SUBTLV, sizeof(*rv));
+	rv->mtid = p->mtid;
+	rv->prefix = p->prefix;
+	return rv;
+}
+
+static void format_subtlv_ppr_prefix(struct ppr_prefix *p, struct sbuf *buf,
+				     int indent)
+{
+	if (!p)
+		return;
+
+	char prefixbuf[PREFIX2STR_BUFFER];
+	sbuf_push(buf, indent, "PPR Prefix: %s (%s)\n",
+		  prefix2str(&p->prefix, prefixbuf, sizeof(prefixbuf)),
+		  isis_mtid2str(p->mtid));
+}
+
+static int pack_subtlv_ppr_prefix(struct ppr_prefix *p, struct stream *s)
+{
+	uint8_t psize;
+
+	if (!p)
+		return 0;
+
+	psize = PSIZE(p->prefix.prefixlen);
+	if (STREAM_WRITEABLE(s) < (unsigned)(6 + psize))
+		return 1;
+
+	/* Type */
+	stream_putc(s, ISIS_SUBTLV_PPR_PREFIX);
+	/* Length */
+	stream_putc(s, 4 + psize);
+	/* MT-ID */
+	stream_putw(s, p->mtid);
+	/* Prefix Length */
+	stream_putc(s, prefix_blen(&p->prefix));
+	/* Mask Length */
+	stream_putc(s, p->prefix.prefixlen);
+	/* IS-IS Prefix */
+	stream_put(s, &p->prefix.u.prefix, psize);
+	return 0;
+}
+
+static int unpack_subtlv_ppr_prefix(enum isis_tlv_context context,
+				    uint8_t tlv_type, uint8_t tlv_len,
+				    struct stream *s, struct sbuf *log,
+				    void *dest, int indent)
+{
+	struct isis_subtlvs *subtlvs = dest;
+	struct ppr_prefix p = {};
+	uint8_t prefixlen, masklen, max_masklen, psize;
+
+	sbuf_push(log, indent, "Unpacking PPR-Prefix Sub-TLV...\n");
+
+	if (tlv_len < 4) {
+		sbuf_push(
+			log, indent,
+			"Not enough data left. (expected 4 or more bytes, got %" PRIu8
+			")\n",
+			tlv_len);
+		return 1;
+	}
+
+	/* MT-ID */
+	p.mtid = stream_getw(s) & ISIS_MT_MASK;
+
+	/* Prefix Length */
+	prefixlen = stream_getc(s);
+
+	/* Mask Length */
+	masklen = stream_getc(s);
+
+	/* Sanity checks */
+	switch (prefixlen) {
+	case 4:
+		p.prefix.family = AF_INET;
+		max_masklen = IPV4_MAX_BITLEN;
+		break;
+	case 16:
+		p.prefix.family = AF_INET6;
+		max_masklen = IPV6_MAX_BITLEN;
+		break;
+	default:
+		sbuf_push(log, indent, "Invalid prefix length: %u\n",
+			  prefixlen);
+		return 1;
+	}
+
+	if (masklen > max_masklen) {
+		sbuf_push(log, indent, "Mask Len %u is implausible for %s\n",
+			  masklen, family2str(p.prefix.family));
+		return 1;
+	}
+
+	/* IS-IS Prefix */
+	psize = PSIZE(masklen);
+	if (tlv_len != 4 + psize) {
+		sbuf_push(
+			log, indent,
+			"TLV size differs from expected size for the masklen. "
+			"(expected %u but got %" PRIu8 ")\n",
+			4 + psize, tlv_len);
+		return 1;
+	}
+	p.prefix.prefixlen = masklen;
+	stream_get(&p.prefix.u.prefix, s, psize);
+
+	if (subtlvs->ppr.prefix) {
+		sbuf_push(
+			log, indent,
+			"WARNING: PPR prefix Sub-TLV present multiple times.\n");
+		/* Ignore all but first occurrence of the source prefix Sub-TLV
+		 */
+		return 0;
+	}
+
+	subtlvs->ppr.prefix = XCALLOC(MTYPE_ISIS_SUBTLV, sizeof(p));
+	*subtlvs->ppr.prefix = p;
+	return 0;
+}
+
+/* Functions for Sub-TVL 2 PPR-ID */
+
+static uint8_t ppr_id_subtlv_len(struct ppr_id *i)
+{
+	uint8_t len = 6;
+
+	switch (i->type) {
+	case PPR_ID_TYPE_MPLS:
+		len += 4;
+		break;
+	case PPR_ID_TYPE_IPV4:
+	case PPR_ID_TYPE_IPV6:
+	case PPR_ID_TYPE_SRV6:
+		len += PSIZE(i->id.prefix.prefixlen);
+		break;
+	default:
+		flog_err(EC_LIB_DEVELOPMENT, "%s: unknown PPR-ID type: %u",
+			 __func__, i->type);
+		exit(1);
+	}
+
+	return len;
+}
+
+static struct ppr_id *copy_subtlv_ppr_id(struct ppr_id *i)
+{
+	if (!i)
+		return NULL;
+
+	struct ppr_id *rv = XCALLOC(MTYPE_ISIS_SUBTLV, sizeof(*rv));
+	rv->flags = i->flags;
+	rv->type = i->type;
+	rv->algorithm = i->algorithm;
+	rv->id = i->id;
+	return rv;
+}
+
+static void format_subtlv_ppr_id(struct ppr_id *i, struct sbuf *buf, int indent)
+{
+	if (!i)
+		return;
+
+	sbuf_push(buf, indent, "ID:\n");
+	sbuf_push(buf, indent, "  Type: %s\n", isis_ppridtype2str(i->type));
+	sbuf_push(buf, indent, "  Value: %s\n", isis_pprid2str(i));
+	sbuf_push(buf, indent, "  Algorithm: %s\n",
+		  isis_ppridalgo2str(i->algorithm));
+	sbuf_push(buf, indent, "  Flags: %s\n", isis_ppridflags2str(i->flags));
+}
+
+static int pack_subtlv_ppr_id(struct ppr_id *i, struct stream *s)
+{
+	if (!i)
+		return 0;
+
+	uint8_t subtlv_len = ppr_id_subtlv_len(i);
+
+	if (STREAM_WRITEABLE(s) < (unsigned)(subtlv_len + 2))
+		return 1;
+
+	/* Type */
+	stream_putc(s, ISIS_SUBTLV_PPR_ID);
+
+	/* Length (set later) */
+	stream_putc(s, subtlv_len);
+
+	/* PPR-ID Flags */
+	stream_putw(s, i->flags);
+
+	/* PPR-ID Type */
+	stream_putc(s, i->type);
+
+	/* PPR-ID Length & PPR-ID Mask Len*/
+	switch (i->type) {
+	case PPR_ID_TYPE_MPLS:
+		stream_putc(s, 4);
+		stream_putc(s, 0);
+		break;
+	case PPR_ID_TYPE_IPV4:
+	case PPR_ID_TYPE_IPV6:
+	case PPR_ID_TYPE_SRV6:
+		stream_putc(s, prefix_blen(&i->id.prefix));
+		stream_putc(s, i->id.prefix.prefixlen);
+		break;
+	}
+
+	/* Algorithm */
+	stream_putc(s, i->algorithm);
+
+	/* PPR-ID */
+	switch (i->type) {
+	case PPR_ID_TYPE_MPLS:
+		stream_put(s, &i->id.mpls, sizeof(i->id.mpls));
+		break;
+	case PPR_ID_TYPE_IPV4:
+	case PPR_ID_TYPE_IPV6:
+	case PPR_ID_TYPE_SRV6:
+		stream_put(s, &i->id.prefix.u.prefix,
+			   PSIZE(i->id.prefix.prefixlen));
+		break;
+	}
+
+	return 0;
+}
+
+static int unpack_subtlv_ppr_id(enum isis_tlv_context context, uint8_t tlv_type,
+				uint8_t tlv_len, struct stream *s,
+				struct sbuf *log, void *dest, int indent)
+{
+	struct isis_subtlvs *subtlvs = dest;
+	struct ppr_id i;
+	uint8_t idlen, idmasklen, idsize;
+
+	sbuf_push(log, indent, "Unpacking PPR-ID Sub-TLV...\n");
+
+	if (tlv_len < 6) {
+		sbuf_push(
+			log, indent,
+			"Not enough data left. (expected 6 or more bytes, got %" PRIu8
+			")\n",
+			tlv_len);
+		return 1;
+	}
+
+	/* PPR-ID Flags */
+	i.flags = stream_getw(s) & ISIS_PPR_ID_FLAGS_MASK;
+
+	/* PPR-ID Type */
+	i.type = stream_getc(s);
+
+	/* PPR-ID Length */
+	idlen = stream_getc(s);
+
+	/* PPR-ID Mask Len */
+	idmasklen = stream_getc(s);
+
+	/* Sanity checks */
+	switch (i.type) {
+	case PPR_ID_TYPE_MPLS:
+		if (idlen != 4) {
+			sbuf_push(log, indent,
+				  "PPR-ID Length %u is invalid for MPLS\n",
+				  idlen);
+			return 1;
+		}
+		if (idmasklen != 0) {
+			sbuf_push(log, indent,
+				  "PPR-ID Mask Len %u is invalid for MPLS\n",
+				  idmasklen);
+			return 1;
+		}
+		idsize = 4;
+		break;
+	case PPR_ID_TYPE_IPV4:
+		if (idlen != 4) {
+			sbuf_push(log, indent,
+				  "PPR-ID Length %u is invalid for IPv4\n",
+				  idlen);
+			return 1;
+		}
+		if (idmasklen > IPV4_MAX_BITLEN) {
+			sbuf_push(
+				log, indent,
+				"PPR-ID Mask Len %u is implausible for IPv4\n",
+				idmasklen);
+			return 1;
+		}
+		i.id.prefix.family = AF_INET;
+		i.id.prefix.prefixlen = idmasklen;
+		idsize = PSIZE(idmasklen);
+		break;
+	case PPR_ID_TYPE_IPV6:
+	case PPR_ID_TYPE_SRV6:
+		if (idlen != 16) {
+			sbuf_push(log, indent,
+				  "PPR-ID Length %u is invalid for IPv6/SRv6\n",
+				  idlen);
+			return 1;
+		}
+		if (idmasklen > IPV6_MAX_BITLEN) {
+			sbuf_push(
+				log, indent,
+				"PPR-ID Mask Len %u is implausible for IPv6/SRv6\n",
+				idmasklen);
+			return 1;
+		}
+		i.id.prefix.family = AF_INET6;
+		i.id.prefix.prefixlen = idmasklen;
+		idsize = PSIZE(idmasklen);
+		break;
+	default:
+		sbuf_push(log, indent, "Invalid PPR-ID type: %u\n", i.type);
+		return 1;
+	}
+
+	/* Algorithm */
+	i.algorithm = stream_getc(s);
+
+	/* PPR-ID */
+	if (tlv_len != 6 + idsize) {
+		sbuf_push(
+			log, indent,
+			"TLV size differs from expected size for the ID length. "
+			"(expected %u but got %" PRIu8 ")\n",
+			6 + idsize, tlv_len);
+		return 1;
+	}
+
+	switch (i.type) {
+	case PPR_ID_TYPE_MPLS:
+		stream_get(&i.id, s, idsize);
+		break;
+	case PPR_ID_TYPE_IPV4:
+	case PPR_ID_TYPE_IPV6:
+	case PPR_ID_TYPE_SRV6:
+		stream_get(&i.id.prefix.u.prefix, s, idsize);
+		break;
+	}
+
+	if (subtlvs->ppr.id) {
+		sbuf_push(log, indent,
+			  "WARNING: PPR-ID Sub-TLV present multiple times.\n");
+		/* Ignore all but first occurrence of the source prefix Sub-TLV
+		 */
+		return 0;
+	}
+
+	subtlvs->ppr.id = XCALLOC(MTYPE_ISIS_SUBTLV, sizeof(i));
+	memcpy(subtlvs->ppr.id, &i, sizeof(i));
+	return 0;
+}
+
+/* Functions for Sub-TVL 3 PPR-PDE */
+static uint8_t ppr_pde_id_value_len(bool id_sid, enum ppr_pde_id_type id_type)
+{
+	switch (id_type) {
+	case PPR_PDE_ID_TYPE_SID_LABEL:
+	case PPR_PDE_ID_TYPE_SRMPLS_PREFIX_SID:
+	case PPR_PDE_ID_TYPE_SRMPLS_ADJ_SID:
+		if (id_sid)
+			return 4;
+		return 3;
+	case PPR_PDE_ID_TYPE_IPV4:
+		return 4;
+	case PPR_PDE_ID_TYPE_IPV6:
+	case PPR_PDE_ID_TYPE_SRV6_NODE_SID:
+	case PPR_PDE_ID_TYPE_SRV6_ADJ_SID:
+		return 16;
+	default:
+		flog_err(EC_LIB_DEVELOPMENT, "%s: unknown PDE ID type: %u",
+			 __func__, id_type);
+		exit(1);
+	}
+}
+
+static struct isis_item *copy_item_ppr_pde(struct isis_item *i)
+{
+	struct ppr_pde *pde = (struct ppr_pde *)i;
+	struct ppr_pde *rv = XCALLOC(MTYPE_ISIS_SUBTLV, sizeof(*rv));
+
+	rv->type = pde->type;
+	rv->flags = pde->flags;
+	rv->id_type = pde->id_type;
+	rv->id_value = pde->id_value;
+	return (struct isis_item *)rv;
+}
+
+static void format_item_ppr_pde(uint16_t mtid, struct isis_item *i,
+				struct sbuf *buf, int indent)
+{
+	struct ppr_pde *pde = (struct ppr_pde *)i;
+
+	sbuf_push(buf, indent, "PDE:\n");
+	sbuf_push(buf, indent, "  Type: %s\n", isis_pprpdetype2str(pde->type));
+	sbuf_push(buf, indent, "  ID type: %s\n",
+		  isis_pprpdeidtype2str(pde->id_type));
+	sbuf_push(buf, indent, "  ID Value: %s\n", isis_pprpdeid2str(pde));
+	sbuf_push(buf, indent, "  Flags: %s\n",
+		  isis_pprpdeflags2str(pde->flags));
+}
+
+static void free_item_ppr_pde(struct isis_item *i)
+{
+	XFREE(MTYPE_ISIS_SUBTLV, i);
+}
+
+static int pack_item_ppr_pde(struct isis_item *i, struct stream *s)
+{
+	struct ppr_pde *pde = (struct ppr_pde *)i;
+	uint8_t idlen = ppr_pde_id_value_len(pde->id_sid, pde->id_type);
+
+	if (STREAM_WRITEABLE(s) < (unsigned)(6 + idlen))
+		return 1;
+
+	/* PPR-PDE Type */
+	stream_putc(s, pde->type);
+
+	/* Reserved */
+	stream_putc(s, 0);
+
+	/* PDE-ID Type */
+	stream_putc(s, pde->id_type);
+
+	/* PDE-ID Len */
+	stream_putc(s, idlen);
+
+	/* PPR-PDE Flags */
+	stream_putw(s, pde->flags);
+
+	/* PDE-ID Value */
+	switch (pde->id_type) {
+	case PPR_PDE_ID_TYPE_SID_LABEL:
+	case PPR_PDE_ID_TYPE_SRMPLS_PREFIX_SID:
+	case PPR_PDE_ID_TYPE_SRMPLS_ADJ_SID:
+		if (pde->id_sid)
+			stream_putl(s, pde->id_value.mpls);
+		else
+			stream_put3(s, pde->id_value.mpls);
+		break;
+	case PPR_PDE_ID_TYPE_IPV4:
+		stream_put(s, &pde->id_value.ipv4, sizeof(pde->id_value.ipv4));
+		break;
+	case PPR_PDE_ID_TYPE_IPV6:
+	case PPR_PDE_ID_TYPE_SRV6_NODE_SID:
+	case PPR_PDE_ID_TYPE_SRV6_ADJ_SID:
+		stream_put(s, &pde->id_value.ipv6, sizeof(pde->id_value.ipv6));
+		break;
+	default:
+		flog_err(EC_LIB_DEVELOPMENT, "%s: unknown PDE-ID type: %u",
+			 __func__, pde->id_type);
+		exit(1);
+	}
+
+	return 0;
+}
+
+static int unpack_item_ppr_pde(uint16_t mtid, uint8_t len, struct stream *s,
+			       struct sbuf *log, void *dest, int indent)
+{
+	struct isis_subtlvs *subtlvs = dest;
+	struct ppr_pde pde = {};
+	uint8_t idlen, expected_idlen;
+	bool id_sid = false;
+
+	sbuf_push(log, indent, "Unpacking PPR-PDE Sub-TLV...\n");
+
+	if (len < 6) {
+		sbuf_push(
+			log, indent,
+			"Not enough data left. (expected 6 or more bytes, got %" PRIu8
+			")\n",
+			len);
+		return 1;
+	}
+
+	/* PPR-PDE Type */
+	pde.type = stream_getc(s);
+
+	/* Reserved */
+	(void)stream_getc(s);
+
+	/* PDE-ID Type */
+	pde.id_type = stream_getc(s);
+	switch (pde.id_type) {
+	case PPR_PDE_ID_TYPE_SID_LABEL:
+	case PPR_PDE_ID_TYPE_SRMPLS_PREFIX_SID:
+	case PPR_PDE_ID_TYPE_SRMPLS_ADJ_SID:
+	case PPR_PDE_ID_TYPE_IPV4:
+	case PPR_PDE_ID_TYPE_IPV6:
+	case PPR_PDE_ID_TYPE_SRV6_NODE_SID:
+	case PPR_PDE_ID_TYPE_SRV6_ADJ_SID:
+		break;
+	default:
+		sbuf_push(log, indent, "Unknown PDE-ID type (%" PRIu8 ")\n",
+			  pde.id_type);
+		return -1;
+	}
+
+	/* PDE-ID Len */
+	idlen = stream_getc(s);
+	if (idlen == 4
+	    && (pde.id_type >= PPR_PDE_ID_TYPE_SID_LABEL
+		|| pde.id_type <= PPR_PDE_ID_TYPE_SRMPLS_ADJ_SID))
+		id_sid = true;
+
+	expected_idlen = ppr_pde_id_value_len(id_sid, pde.id_type);
+	if (idlen != expected_idlen) {
+		sbuf_push(log, indent,
+			  "PDE-ID Len size differs from expected size. "
+			  "(expected %u but got %u)\n",
+			  expected_idlen, idlen);
+		return 1;
+	}
+
+	/* PDE-ID Flags */
+	pde.flags = stream_getw(s) & ISIS_PPR_PDE_FLAGS_MASK;
+
+	/* PDE-ID Value */
+	switch (pde.id_type) {
+	case PPR_PDE_ID_TYPE_SID_LABEL:
+	case PPR_PDE_ID_TYPE_SRMPLS_PREFIX_SID:
+	case PPR_PDE_ID_TYPE_SRMPLS_ADJ_SID:
+		if (id_sid)
+			pde.id_value.mpls = stream_getl(s);
+		else
+			pde.id_value.mpls = stream_get3(s) & 0x000FFFFF;
+		break;
+	case PPR_PDE_ID_TYPE_IPV4:
+		stream_get(&pde.id_value.ipv4, s, idlen);
+		break;
+	case PPR_PDE_ID_TYPE_IPV6:
+	case PPR_PDE_ID_TYPE_SRV6_NODE_SID:
+	case PPR_PDE_ID_TYPE_SRV6_ADJ_SID:
+		stream_get(&pde.id_value.ipv6, s, idlen);
+		break;
+	}
+
+	format_item_ppr_pde(mtid, (struct isis_item *)&pde, log, indent + 2);
+	append_item(&subtlvs->ppr.pdes,
+		    copy_item_ppr_pde((struct isis_item *)&pde));
+
+	return 0;
+}
+
+/* Functions for Sub-TVL 4 PPR-Attributes */
+
+static struct ppr_attrs *copy_subtlv_ppr_attrs(struct ppr_attrs *attrs)
+{
+	if (!attrs)
+		return NULL;
+
+	struct ppr_attrs *rv = XCALLOC(MTYPE_ISIS_SUBTLV, sizeof(*rv));
+
+	rv->subtlvs = copy_subtlvs(attrs->subtlvs);
+	return rv;
+}
+
+static void format_subtlv_ppr_attrs(struct ppr_attrs *attrs, struct sbuf *buf,
+				    int indent)
+{
+	if (!attrs)
+		return;
+
+	if (attrs->subtlvs) {
+		sbuf_push(buf, indent, "Attributes:\n");
+		format_subtlvs(attrs->subtlvs, buf, indent + 2);
+	}
+}
+
+static int pack_subtlv_ppr_attrs(struct ppr_attrs *attrs, struct stream *s)
+{
+	if (!attrs)
+		return 0;
+
+	if (STREAM_WRITEABLE(s) < 2)
+		return 1;
+
+	/* Type */
+	stream_putc(s, ISIS_SUBTLV_PPR_ATTR);
+
+	/* Length + SubTLVs */
+	if (attrs->subtlvs) {
+		return pack_subtlvs(attrs->subtlvs, s);
+	} else {
+		stream_putc(s, 0);
+	}
+
+	return 0;
+}
+
+static int unpack_subtlv_ppr_attrs(enum isis_tlv_context context,
+				   uint8_t tlv_type, uint8_t tlv_len,
+				   struct stream *s, struct sbuf *log,
+				   void *dest, int indent)
+{
+	struct isis_subtlvs *subtlvs = dest;
+
+	sbuf_push(log, indent, "Unpacking PPR-Attributes...\n");
+
+	if (subtlvs->ppr.attrs) {
+		sbuf_push(
+			log, indent,
+			"WARNING: PPR-Attributes Sub-TLV present multiple times.\n");
+		/* Ignore all but first occurrence of the source prefix Sub-TLV
+		 */
+		return 0;
+	}
+
+	subtlvs->ppr.attrs =
+		XCALLOC(MTYPE_ISIS_SUBTLV, sizeof(*subtlvs->ppr.attrs));
+	subtlvs->ppr.attrs->subtlvs =
+		isis_alloc_subtlvs(ISIS_CONTEXT_SUBTLV_PPR_ATTRS);
+	if (unpack_tlvs(ISIS_CONTEXT_SUBTLV_PPR_ATTRS, tlv_len, s, log,
+			subtlvs->ppr.attrs->subtlvs, indent + 4)) {
+		return 1;
+	}
+
+	return 0;
+}
+
+/* Functions for Sub-TVL 4 PPR-Attributes - Sub-TLVs 1-5 */
+
+static size_t ppr_attr_subtlv_len(enum isis_tlv_type type)
+{
+	switch (type) {
+	case ISIS_SUBTLV_PPR_ATTR_STATS_PKTS:
+	case ISIS_SUBTLV_PPR_ATTR_STATS_BYTES:
+		return 0;
+	case ISIS_SUBTLV_PPR_ATTR_RID_V4:
+		return 4;
+	case ISIS_SUBTLV_PPR_ATTR_RID_V6:
+		return 16;
+	case ISIS_SUBTLV_PPR_ATTR_METRIC:
+		return 4;
+	default:
+		flog_err(EC_LIB_DEVELOPMENT,
+			 "%s: unknown PPR-Attribute type: %u", __func__, type);
+		exit(1);
+	}
+}
+
+static struct ppr_attr *copy_subtlv_ppr_attr(struct ppr_attr *attr)
+{
+	if (!attr)
+		return NULL;
+
+	struct ppr_attr *rv = XCALLOC(MTYPE_ISIS_SUBTLV, sizeof(*rv));
+
+	rv->type = attr->type;
+	rv->value = attr->value;
+	return rv;
+}
+
+static void format_subtlv_ppr_attr(struct ppr_attr *attr, struct sbuf *buf,
+				   int indent)
+{
+	char rid_buf[INET6_ADDRSTRLEN];
+
+	if (!attr)
+		return;
+
+	switch (attr->type) {
+	case ISIS_SUBTLV_PPR_ATTR_STATS_PKTS:
+		sbuf_push(buf, indent, "Traffic statistics in packets\n");
+		break;
+	case ISIS_SUBTLV_PPR_ATTR_STATS_BYTES:
+		sbuf_push(buf, indent, "Traffic statistics in bytes\n");
+		break;
+	case ISIS_SUBTLV_PPR_ATTR_RID_V4:
+		sbuf_push(buf, indent, "Originating node IPv4 Router ID: %s\n",
+			  inet_ntop(AF_INET, &attr->value.rid_v4, rid_buf,
+				    sizeof(rid_buf)));
+		break;
+	case ISIS_SUBTLV_PPR_ATTR_RID_V6:
+		sbuf_push(buf, indent, "Originating node IPv6 Router ID: %s\n",
+			  inet_ntop(AF_INET6, &attr->value.rid_v6, rid_buf,
+				    sizeof(rid_buf)));
+		break;
+	case ISIS_SUBTLV_PPR_ATTR_METRIC:
+		sbuf_push(buf, indent, "Metric: %" PRIu32 "\n",
+			  attr->value.metric);
+		break;
+	default:
+		flog_err(EC_LIB_DEVELOPMENT,
+			 "%s: unknown PPR-Attribute type: %u", __func__,
+			 attr->type);
+		exit(1);
+	}
+}
+
+static int pack_subtlv_ppr_attr(enum isis_tlv_type type, struct ppr_attr *attr,
+				struct stream *s)
+{
+	size_t tlv_len;
+
+	if (!attr)
+		return 0;
+
+	tlv_len = ppr_attr_subtlv_len(type);
+	if (STREAM_WRITEABLE(s) < 1 + tlv_len)
+		return 1;
+
+	/* Type */
+	stream_putc(s, type);
+
+	/* Length */
+	stream_putc(s, tlv_len);
+
+	/* Value. */
+	switch (attr->type) {
+	case ISIS_SUBTLV_PPR_ATTR_STATS_PKTS:
+		break;
+	case ISIS_SUBTLV_PPR_ATTR_STATS_BYTES:
+		break;
+	case ISIS_SUBTLV_PPR_ATTR_RID_V4:
+		stream_put(s, &attr->value.rid_v4, sizeof(attr->value.rid_v4));
+		break;
+	case ISIS_SUBTLV_PPR_ATTR_RID_V6:
+		stream_put(s, &attr->value.rid_v6, sizeof(attr->value.rid_v6));
+		break;
+	case ISIS_SUBTLV_PPR_ATTR_METRIC:
+		stream_putl(s, attr->value.metric);
+		break;
+	default:
+		flog_err(EC_LIB_DEVELOPMENT,
+			 "%s: unknown PPR-Attribute type: %u", __func__, type);
+		exit(1);
+	}
+
+	return 0;
+}
+
+static int unpack_subtlv_ppr_attr(enum isis_tlv_context context,
+				  uint8_t tlv_type, uint8_t tlv_len,
+				  struct stream *s, struct sbuf *log,
+				  void *dest, int indent)
+{
+	struct isis_subtlvs *subtlvs = dest;
+	struct ppr_attr attr = {};
+	struct ppr_attr **attrp = NULL;
+	uint8_t expected_tlv_len;
+
+	sbuf_push(log, indent, "Unpacking PPR-Attribute...\n");
+
+	/* Attribute type */
+	attr.type = tlv_type;
+
+	/* Sanity checks */
+	switch (attr.type) {
+	case ISIS_SUBTLV_PPR_ATTR_STATS_PKTS:
+	case ISIS_SUBTLV_PPR_ATTR_STATS_BYTES:
+	case ISIS_SUBTLV_PPR_ATTR_RID_V4:
+	case ISIS_SUBTLV_PPR_ATTR_RID_V6:
+	case ISIS_SUBTLV_PPR_ATTR_METRIC:
+		break;
+	default:
+		sbuf_push(log, indent, "Unknown PPR-Attribute type (%" PRIu8 ")\n",
+			  attr.type);
+		return -1;
+	}
+
+	expected_tlv_len = ppr_attr_subtlv_len(tlv_type);
+	if (tlv_len != expected_tlv_len) {
+		sbuf_push(log, indent,
+			  "TLV size differs from expected size. "
+			  "(expected %u but got %" PRIu8 ")\n",
+			  expected_tlv_len, tlv_len);
+		return 1;
+	}
+
+	/* Attribute value (if any) */
+	switch (attr.type) {
+	case ISIS_SUBTLV_PPR_ATTR_STATS_PKTS:
+		attrp = &subtlvs->ppr.attr.stats_pkts;
+		break;
+	case ISIS_SUBTLV_PPR_ATTR_STATS_BYTES:
+		attrp = &subtlvs->ppr.attr.stats_bytes;
+		break;
+	case ISIS_SUBTLV_PPR_ATTR_RID_V4:
+		attrp = &subtlvs->ppr.attr.rid_v4;
+
+		stream_get(&attr.value.rid_v4, s, sizeof(attr.value.rid_v4));
+		break;
+	case ISIS_SUBTLV_PPR_ATTR_RID_V6:
+		attrp = &subtlvs->ppr.attr.rid_v6;
+
+		stream_get(&attr.value.rid_v6, s, sizeof(attr.value.rid_v6));
+		break;
+	case ISIS_SUBTLV_PPR_ATTR_METRIC:
+		attrp = &subtlvs->ppr.attr.metric;
+
+		attr.value.metric = stream_getl(s);
+		break;
+	}
+
+	*attrp = XCALLOC(MTYPE_ISIS_SUBTLV, sizeof(attr));
+	memcpy(*attrp, &attr, sizeof(attr));
+
+	return 0;
+}
+
 static void init_item_list(struct isis_item_list *items);
 static struct isis_item *copy_item(enum isis_tlv_context context,
 				   enum isis_tlv_type type,
@@ -333,6 +1158,7 @@ static struct isis_subtlvs *isis_alloc_subtlvs(enum isis_tlv_context context)
 	result->context = context;
 
 	init_item_list(&result->prefix_sids);
+	init_item_list(&result->ppr.pdes);
 
 	return result;
 }
@@ -351,6 +1177,19 @@ static struct isis_subtlvs *copy_subtlvs(struct isis_subtlvs *subtlvs)
 
 	rv->source_prefix =
 		copy_subtlv_ipv6_source_prefix(subtlvs->source_prefix);
+	rv->ppr.prefix = copy_subtlv_ppr_prefix(subtlvs->ppr.prefix);
+	rv->ppr.id = copy_subtlv_ppr_id(subtlvs->ppr.id);
+	copy_items(subtlvs->context, ISIS_SUBTLV_PPR_PDE,
+		   &subtlvs->ppr.pdes, &rv->ppr.pdes);
+	rv->ppr.attrs = copy_subtlv_ppr_attrs(subtlvs->ppr.attrs);
+	rv->ppr.attr.stats_pkts =
+		copy_subtlv_ppr_attr(subtlvs->ppr.attr.stats_pkts);
+	rv->ppr.attr.stats_bytes =
+		copy_subtlv_ppr_attr(subtlvs->ppr.attr.stats_bytes);
+	rv->ppr.attr.rid_v4 = copy_subtlv_ppr_attr(subtlvs->ppr.attr.rid_v4);
+	rv->ppr.attr.rid_v6 = copy_subtlv_ppr_attr(subtlvs->ppr.attr.rid_v6);
+	rv->ppr.attr.metric = copy_subtlv_ppr_attr(subtlvs->ppr.attr.metric);
+
 	return rv;
 }
 
@@ -361,6 +1200,16 @@ static void format_subtlvs(struct isis_subtlvs *subtlvs, struct sbuf *buf,
 		     &subtlvs->prefix_sids, buf, indent);
 
 	format_subtlv_ipv6_source_prefix(subtlvs->source_prefix, buf, indent);
+	format_subtlv_ppr_prefix(subtlvs->ppr.prefix, buf, indent);
+	format_subtlv_ppr_id(subtlvs->ppr.id, buf, indent);
+	format_items(subtlvs->context, ISIS_SUBTLV_PPR_PDE,
+		     &subtlvs->ppr.pdes, buf, indent);
+	format_subtlv_ppr_attrs(subtlvs->ppr.attrs, buf, indent);
+	format_subtlv_ppr_attr(subtlvs->ppr.attr.stats_pkts, buf, indent);
+	format_subtlv_ppr_attr(subtlvs->ppr.attr.stats_bytes, buf, indent);
+	format_subtlv_ppr_attr(subtlvs->ppr.attr.rid_v4, buf, indent);
+	format_subtlv_ppr_attr(subtlvs->ppr.attr.rid_v6, buf, indent);
+	format_subtlv_ppr_attr(subtlvs->ppr.attr.metric, buf, indent);
 }
 
 static void isis_free_subtlvs(struct isis_subtlvs *subtlvs)
@@ -372,6 +1221,19 @@ static void isis_free_subtlvs(struct isis_subtlvs *subtlvs)
 		   &subtlvs->prefix_sids);
 
 	XFREE(MTYPE_ISIS_SUBTLV, subtlvs->source_prefix);
+	XFREE(MTYPE_ISIS_SUBTLV, subtlvs->ppr.prefix);
+	XFREE(MTYPE_ISIS_SUBTLV, subtlvs->ppr.id);
+	free_items(subtlvs->context, ISIS_SUBTLV_PPR_PDE,
+		   &subtlvs->ppr.pdes);
+	if (subtlvs->ppr.attrs) {
+		isis_free_subtlvs(subtlvs->ppr.attrs->subtlvs);
+		XFREE(MTYPE_ISIS_SUBTLV, subtlvs->ppr.attrs);
+	}
+	XFREE(MTYPE_ISIS_SUBTLV, subtlvs->ppr.attr.stats_pkts);
+	XFREE(MTYPE_ISIS_SUBTLV, subtlvs->ppr.attr.stats_bytes);
+	XFREE(MTYPE_ISIS_SUBTLV, subtlvs->ppr.attr.rid_v4);
+	XFREE(MTYPE_ISIS_SUBTLV, subtlvs->ppr.attr.rid_v6);
+	XFREE(MTYPE_ISIS_SUBTLV, subtlvs->ppr.attr.metric);
 
 	XFREE(MTYPE_ISIS_SUBTLV, subtlvs);
 }
@@ -395,6 +1257,48 @@ static int pack_subtlvs(struct isis_subtlvs *subtlvs, struct stream *s)
 	if (rv)
 		return rv;
 
+	rv = pack_subtlv_ppr_prefix(subtlvs->ppr.prefix, s);
+	if (rv)
+		return rv;
+
+	rv = pack_subtlv_ppr_id(subtlvs->ppr.id, s);
+	if (rv)
+		return rv;
+
+	rv = pack_items(subtlvs->context, ISIS_SUBTLV_PPR_PDE,
+			&subtlvs->ppr.pdes, s, NULL, NULL, NULL, NULL);
+	if (rv)
+		return rv;
+
+	rv = pack_subtlv_ppr_attrs(subtlvs->ppr.attrs, s);
+	if (rv)
+		return rv;
+
+	rv = pack_subtlv_ppr_attr(ISIS_SUBTLV_PPR_ATTR_STATS_PKTS,
+				  subtlvs->ppr.attr.stats_pkts, s);
+	if (rv)
+		return rv;
+
+	rv = pack_subtlv_ppr_attr(ISIS_SUBTLV_PPR_ATTR_STATS_BYTES,
+				  subtlvs->ppr.attr.stats_bytes, s);
+	if (rv)
+		return rv;
+
+	rv = pack_subtlv_ppr_attr(ISIS_SUBTLV_PPR_ATTR_RID_V4,
+				  subtlvs->ppr.attr.rid_v4, s);
+	if (rv)
+		return rv;
+
+	rv = pack_subtlv_ppr_attr(ISIS_SUBTLV_PPR_ATTR_RID_V6,
+				  subtlvs->ppr.attr.rid_v6, s);
+	if (rv)
+		return rv;
+
+	rv = pack_subtlv_ppr_attr(ISIS_SUBTLV_PPR_ATTR_METRIC,
+				  subtlvs->ppr.attr.metric, s);
+	if (rv)
+		return rv;
+
 	size_t subtlv_len = stream_get_endp(s) - subtlv_len_pos - 1;
 	if (subtlv_len > 255)
 		return 1;
@@ -402,10 +1306,6 @@ static int pack_subtlvs(struct isis_subtlvs *subtlvs, struct stream *s)
 	stream_putc_at(s, subtlv_len_pos, subtlv_len);
 	return 0;
 }
-
-static int unpack_tlvs(enum isis_tlv_context context, size_t avail_len,
-		       struct stream *stream, struct sbuf *log, void *dest,
-		       int indent);
 
 /* Functions related to TLVs 1 Area Addresses */
 
@@ -813,6 +1713,116 @@ out:
 	if (rv)
 		free_item_extended_reach((struct isis_item *)rv);
 
+	return 1;
+}
+
+/* Functions for TLV 100 - PPR */
+
+static struct isis_item *copy_item_ppr(struct isis_item *i)
+{
+	struct isis_ppr *p = (struct isis_ppr *)i;
+	struct isis_ppr *rv = XCALLOC(MTYPE_ISIS_TLV, sizeof(*rv));
+
+	rv->flags = p->flags;
+	rv->fragment_id = p->fragment_id;
+	rv->subtlvs = copy_subtlvs(p->subtlvs);
+
+	return (struct isis_item *)rv;
+}
+
+static void format_item_ppr(uint16_t mtid, struct isis_item *i,
+			    struct sbuf *buf, int indent)
+{
+	struct isis_ppr *p = (struct isis_ppr *)i;
+
+	sbuf_push(buf, indent, "TLV PPR:\n");
+	sbuf_push(buf, indent, "  Flags: %s\n", isis_pprflags2str(p->flags));
+	sbuf_push(buf, indent, "  Fragment ID: %" PRIu8 "\n", p->fragment_id);
+
+	if (p->subtlvs) {
+		sbuf_push(buf, indent, "  Subtlvs:\n");
+		format_subtlvs(p->subtlvs, buf, indent + 4);
+	}
+}
+
+static void free_item_ppr(struct isis_item *i)
+{
+	struct isis_ppr *p = (struct isis_ppr *)i;
+
+	isis_free_subtlvs(p->subtlvs);
+	XFREE(MTYPE_ISIS_TLV, p);
+}
+
+static int pack_item_ppr(struct isis_item *i, struct stream *s)
+{
+	struct isis_ppr *p = (struct isis_ppr *)i;
+
+	if (STREAM_WRITEABLE(s) < 3)
+		return 1;
+
+	/* PPR-Flags */
+	stream_putc(s, p->flags);
+
+	/* Fragment-ID */
+	stream_putc(s, p->fragment_id);
+
+	/* PPR Sub-TLVs */
+	if (p->subtlvs) {
+		return pack_subtlvs(p->subtlvs, s);
+	} else {
+		stream_putc(s, 0);
+	}
+
+	return 0;
+}
+
+static int unpack_item_ppr(uint16_t mtid, uint8_t len, struct stream *s,
+			   struct sbuf *log, void *dest, int indent)
+{
+	struct isis_tlvs *tlvs = dest;
+	struct isis_ppr *rv = NULL;
+
+	sbuf_push(log, indent, "Unpacking TLV PPR...\n");
+	if (len < 3) {
+		sbuf_push(
+			log, indent,
+			"Not enough data left. (expected 3 or more bytes, got %" PRIu8
+			")\n",
+			len);
+		goto out;
+	}
+
+	rv = XCALLOC(MTYPE_ISIS_TLV, sizeof(*rv));
+
+	/* PPR-Flags */
+	rv->flags = stream_getc(s) & ISIS_PPR_FLAGS_MASK;
+
+	/* Fragment-ID */
+	rv->fragment_id = stream_getc(s);
+
+	/* PPR Sub-TLVs */
+	uint8_t subtlv_len = stream_getc(s);
+	if (len < 3 + subtlv_len) {
+		sbuf_push(log, indent,
+			  "Expected %" PRIu8
+			  " bytes of subtlvs, but only %u bytes available.\n",
+			  subtlv_len, len - 3);
+		goto out;
+	}
+
+	rv->subtlvs = isis_alloc_subtlvs(ISIS_CONTEXT_SUBTLV_PPR);
+	if (unpack_tlvs(ISIS_CONTEXT_SUBTLV_PPR, subtlv_len, s, log,
+			rv->subtlvs, indent + 4)) {
+		goto out;
+	}
+
+	format_item_ppr(mtid, (struct isis_item *)rv, log, indent + 2);
+	append_item(&tlvs->ppr, (struct isis_item *)rv);
+	return 0;
+
+out:
+	if (rv)
+		free_item_ppr((struct isis_item *)rv);
 	return 1;
 }
 
@@ -1341,7 +2351,7 @@ static int unpack_item_extended_ip_reach(uint16_t mtid, uint8_t len,
 	rv->prefix.family = AF_INET;
 	rv->prefix.prefixlen = control & 0x3f;
 	if (rv->prefix.prefixlen > 32) {
-		sbuf_push(log, indent, "Prefixlen %u is inplausible for IPv4\n",
+		sbuf_push(log, indent, "Prefixlen %u is implausible for IPv4\n",
 			  rv->prefix.prefixlen);
 		goto out;
 	}
@@ -1821,7 +2831,7 @@ static int unpack_item_ipv6_reach(uint16_t mtid, uint8_t len, struct stream *s,
 	rv->prefix.family = AF_INET6;
 	rv->prefix.prefixlen = stream_getc(s);
 	if (rv->prefix.prefixlen > 128) {
-		sbuf_push(log, indent, "Prefixlen %u is inplausible for IPv6\n",
+		sbuf_push(log, indent, "Prefixlen %u is implausible for IPv6\n",
 			  rv->prefix.prefixlen);
 		goto out;
 	}
@@ -2507,6 +3517,7 @@ struct isis_tlvs *isis_alloc_tlvs(void)
 	RB_INIT(isis_mt_item_list, &result->mt_ip_reach);
 	init_item_list(&result->ipv6_reach);
 	RB_INIT(isis_mt_item_list, &result->mt_ipv6_reach);
+	init_item_list(&result->ppr);
 
 	return result;
 }
@@ -2579,6 +3590,9 @@ struct isis_tlvs *isis_copy_tlvs(struct isis_tlvs *tlvs)
 
 	rv->spine_leaf = copy_tlv_spine_leaf(tlvs->spine_leaf);
 
+	copy_items(ISIS_CONTEXT_LSP, ISIS_TLV_PPR,
+	            &tlvs->ppr, &rv->ppr);
+
 	return rv;
 }
 
@@ -2646,6 +3660,8 @@ static void format_tlvs(struct isis_tlvs *tlvs, struct sbuf *buf, int indent)
 	format_tlv_threeway_adj(tlvs->threeway_adj, buf, indent);
 
 	format_tlv_spine_leaf(tlvs->spine_leaf, buf, indent);
+
+	format_items(ISIS_CONTEXT_LSP, ISIS_TLV_PPR, &tlvs->ppr, buf, indent);
 }
 
 const char *isis_format_tlvs(struct isis_tlvs *tlvs)
@@ -2699,6 +3715,7 @@ void isis_free_tlvs(struct isis_tlvs *tlvs)
 		      &tlvs->mt_ipv6_reach);
 	free_tlv_threeway_adj(tlvs->threeway_adj);
 	free_tlv_spine_leaf(tlvs->spine_leaf);
+	free_items(ISIS_CONTEXT_LSP, ISIS_TLV_PPR, &tlvs->ppr);
 
 	XFREE(MTYPE_ISIS_TLV, tlvs);
 }
@@ -3102,9 +4119,15 @@ ITEM_TLV_OPS(mt_router_info, "TLV 229 MT Router Information");
 TLV_OPS(threeway_adj, "TLV 240 P2P Three-Way Adjacency");
 ITEM_TLV_OPS(ipv6_address, "TLV 232 IPv6 Interface Address");
 ITEM_TLV_OPS(ipv6_reach, "TLV 236 IPv6 Reachability");
+ITEM_TLV_OPS(ppr, "TLV 100 PPR");
 
 ITEM_SUBTLV_OPS(prefix_sid, "Sub-TLV 3 SR Prefix-SID");
 SUBTLV_OPS(ipv6_source_prefix, "Sub-TLV 22 IPv6 Source Prefix");
+SUBTLV_OPS(ppr_prefix, "Sub-TLV 1 PPR Prefix");
+SUBTLV_OPS(ppr_id, "Sub-TLV 2 PPR ID");
+ITEM_SUBTLV_OPS(ppr_pde, "Sub-TLV 3 PPR PDE");
+SUBTLV_OPS(ppr_attrs, "Sub-TLV 4 PPR Attributes");
+SUBTLV_OPS(ppr_attr, "Sub-TLVs (1-5) PPR Individual Attributes");
 
 static const struct tlv_ops *tlv_table[ISIS_CONTEXT_MAX][ISIS_TLV_MAX] = {
 	[ISIS_CONTEXT_LSP] = {
@@ -3116,6 +4139,7 @@ static const struct tlv_ops *tlv_table[ISIS_CONTEXT_MAX][ISIS_TLV_MAX] = {
 		[ISIS_TLV_PURGE_ORIGINATOR] = &tlv_purge_originator_ops,
 		[ISIS_TLV_EXTENDED_REACH] = &tlv_extended_reach_ops,
 		[ISIS_TLV_MT_REACH] = &tlv_extended_reach_ops,
+		[ISIS_TLV_PPR] = &tlv_ppr_ops,
 		[ISIS_TLV_OLDSTYLE_IP_REACH] = &tlv_oldstyle_ip_reach_ops,
 		[ISIS_TLV_PROTOCOLS_SUPPORTED] = &tlv_protocols_supported_ops,
 		[ISIS_TLV_OLDSTYLE_IP_REACH_EXT] = &tlv_oldstyle_ip_reach_ops,
@@ -3138,7 +4162,20 @@ static const struct tlv_ops *tlv_table[ISIS_CONTEXT_MAX][ISIS_TLV_MAX] = {
 	[ISIS_CONTEXT_SUBTLV_IPV6_REACH] = {
 		[ISIS_SUBTLV_PREFIX_SID] = &tlv_prefix_sid_ops,
 		[ISIS_SUBTLV_IPV6_SOURCE_PREFIX] = &subtlv_ipv6_source_prefix_ops,
-	}
+	},
+	[ISIS_CONTEXT_SUBTLV_PPR] = {
+		[ISIS_SUBTLV_PPR_PREFIX] = &subtlv_ppr_prefix_ops,
+		[ISIS_SUBTLV_PPR_ID] = &subtlv_ppr_id_ops,
+		[ISIS_SUBTLV_PPR_PDE] = &tlv_ppr_pde_ops,
+		[ISIS_SUBTLV_PPR_ATTR] = &subtlv_ppr_attrs_ops,
+	},
+	[ISIS_CONTEXT_SUBTLV_PPR_ATTRS] = {
+		[ISIS_SUBTLV_PPR_ATTR_STATS_PKTS] = &subtlv_ppr_attr_ops,
+		[ISIS_SUBTLV_PPR_ATTR_STATS_BYTES] = &subtlv_ppr_attr_ops,
+		[ISIS_SUBTLV_PPR_ATTR_RID_V4] = &subtlv_ppr_attr_ops,
+		[ISIS_SUBTLV_PPR_ATTR_RID_V6] = &subtlv_ppr_attr_ops,
+		[ISIS_SUBTLV_PPR_ATTR_METRIC] = &subtlv_ppr_attr_ops,
+	},
 };
 
 /* Accessor functions */
@@ -3225,13 +4262,114 @@ void isis_tlvs_add_mt_router_info(struct isis_tlvs *tlvs, uint16_t mtid,
 	append_item(&tlvs->mt_router_info, (struct isis_item *)i);
 }
 
+void isis_tlvs_add_ppr(struct isis_tlvs *tlvs, uint8_t flags)
+{
+	struct in_addr router_id;
+
+	inet_pton(AF_INET, "1.1.1.1", &router_id);
+	if (isis->router_id != router_id.s_addr)
+		return;
+
+	for (size_t i = 0; i < 10000; i++) {
+		struct isis_ppr *p;
+		struct ppr_pde *pde;
+
+		p = XCALLOC(MTYPE_ISIS_TLV, sizeof(*p));
+		p->flags = flags;
+		p->fragment_id = 0;
+		p->subtlvs = isis_alloc_subtlvs(ISIS_CONTEXT_SUBTLV_PPR);
+		init_item_list(&p->subtlvs->ppr.pdes);
+
+		/* PPR-Prefix Sub-TLV. */
+		p->subtlvs->ppr.prefix =
+			XCALLOC(MTYPE_ISIS_SUBTLV, sizeof(struct ppr_prefix));
+		p->subtlvs->ppr.prefix->mtid = ISIS_MT_IPV4_UNICAST;
+		str2prefix("1.2.3.0/24", &p->subtlvs->ppr.prefix->prefix);
+
+		/* PPR-ID Sub-TLV. */
+		p->subtlvs->ppr.id =
+			XCALLOC(MTYPE_ISIS_SUBTLV, sizeof(struct ppr_id));
+		p->subtlvs->ppr.id->type = PPR_ID_TYPE_MPLS;
+		p->subtlvs->ppr.id->id.mpls = i + 1000;
+#if 0
+		p->subtlvs->ppr.id->type = PPR_ID_TYPE_IPV4;
+		str2prefix("5.6.7.8/32", &p->subtlvs->ppr.id->id.prefix);
+#endif
+#if 0
+		p->subtlvs->ppr.id->type = PPR_ID_TYPE_IPV6;
+		str2prefix("4000::1", &p->subtlvs->ppr.id->id.prefix);
+#endif
+		p->subtlvs->ppr.id->flags =
+			ISIS_PPR_ID_FLAG_LOOSE | ISIS_PPR_ID_FLAG_ALL;
+		p->subtlvs->ppr.id->algorithm = ISIS_ALGORITHM_STRICT_SPF;
+
+		/* PPR-PDE Sub-TLV. */
+		pde = XCALLOC(MTYPE_ISIS_SUBTLV, sizeof(*pde));
+		pde->type = PPR_PDE_TYPE_TOPOLOGICAL;
+		pde->flags = ISIS_PPR_PDE_FLAG_LOOSE;
+		pde->id_type = PPR_PDE_ID_TYPE_SID_LABEL;
+		pde->id_value.mpls = 100;
+		append_item(&p->subtlvs->ppr.pdes, (struct isis_item *)pde);
+
+		pde = XCALLOC(MTYPE_ISIS_SUBTLV, sizeof(*pde));
+		pde->type = PPR_PDE_TYPE_TOPOLOGICAL;
+		pde->flags = ISIS_PPR_PDE_FLAG_DEST;
+		pde->id_type = PPR_PDE_ID_TYPE_SID_LABEL;
+		pde->id_value.mpls = 200;
+		append_item(&p->subtlvs->ppr.pdes, (struct isis_item *)pde);
+
+#if 0
+		/* PPR Attributes Sub-TLV. */
+		p->subtlvs->ppr.attrs =
+			XCALLOC(MTYPE_ISIS_SUBTLV, sizeof(struct ppr_attrs));
+		p->subtlvs->ppr.attrs->subtlvs =
+			isis_alloc_subtlvs(ISIS_CONTEXT_SUBTLV_PPR_ATTRS);
+
+		/* Individual attributes. */
+		p->subtlvs->ppr.attrs->subtlvs->ppr.attr.stats_pkts =
+			XCALLOC(MTYPE_ISIS_SUBTLV, sizeof(struct ppr_attr));
+		p->subtlvs->ppr.attrs->subtlvs->ppr.attr.stats_pkts->type =
+			ISIS_SUBTLV_PPR_ATTR_STATS_PKTS;
+
+		p->subtlvs->ppr.attrs->subtlvs->ppr.attr.stats_bytes =
+			XCALLOC(MTYPE_ISIS_SUBTLV, sizeof(struct ppr_attr));
+		p->subtlvs->ppr.attrs->subtlvs->ppr.attr.stats_bytes->type =
+			ISIS_SUBTLV_PPR_ATTR_STATS_BYTES;
+
+		p->subtlvs->ppr.attrs->subtlvs->ppr.attr.rid_v4 =
+			XCALLOC(MTYPE_ISIS_SUBTLV, sizeof(struct ppr_attr));
+		p->subtlvs->ppr.attrs->subtlvs->ppr.attr.rid_v4->type =
+			ISIS_SUBTLV_PPR_ATTR_RID_V4;
+		inet_pton(AF_INET, "5.5.5.5",
+			  &p->subtlvs->ppr.attrs->subtlvs->ppr.attr.rid_v4
+				   ->value.rid_v4);
+
+		p->subtlvs->ppr.attrs->subtlvs->ppr.attr.rid_v6 =
+			XCALLOC(MTYPE_ISIS_SUBTLV, sizeof(struct ppr_attr));
+		p->subtlvs->ppr.attrs->subtlvs->ppr.attr.rid_v6->type =
+			ISIS_SUBTLV_PPR_ATTR_RID_V6;
+		inet_pton(AF_INET6, "3030:3030:3030:3030:3030:3030:3030:3030",
+			  &p->subtlvs->ppr.attrs->subtlvs->ppr.attr.rid_v6
+				   ->value.rid_v6);
+
+		p->subtlvs->ppr.attrs->subtlvs->ppr.attr.metric =
+			XCALLOC(MTYPE_ISIS_SUBTLV, sizeof(struct ppr_attr));
+		p->subtlvs->ppr.attrs->subtlvs->ppr.attr.metric->type =
+			ISIS_SUBTLV_PPR_ATTR_METRIC;
+		p->subtlvs->ppr.attrs->subtlvs->ppr.attr.metric->value.metric =
+			7;
+#endif
+
+		append_item(&tlvs->ppr, (struct isis_item *)p);
+	}
+}
+
 void isis_tlvs_add_ipv4_address(struct isis_tlvs *tlvs, struct in_addr *addr)
 {
 	struct isis_ipv4_address *a = XCALLOC(MTYPE_ISIS_TLV, sizeof(*a));
 	a->addr = *addr;
 	append_item(&tlvs->ipv4_address, (struct isis_item *)a);
 }
-
 
 void isis_tlvs_add_ipv4_addresses(struct isis_tlvs *tlvs,
 				  struct list *addresses)

@@ -36,6 +36,7 @@
 #include "isisd/isis_misc.h"
 #include "isisd/isis_circuit.h"
 #include "isisd/isis_csm.h"
+#include "isisd/isis_mt.h"
 
 #ifndef VTYSH_EXTRACT_PL
 #include "isisd/isis_cli_clippy.c"
@@ -1933,6 +1934,113 @@ void cli_show_isis_log_adjacency(struct vty *vty, struct lyd_node *dnode,
 	vty_out(vty, " log-adjacency-changes\n");
 }
 
+/* PPR temporary commands */
+static struct cmd_node isis_ppr_node = {ISIS_PPR_NODE, "%s(config-router-ppr)# ",
+					1};
+
+static int isis_ppr_config_write(struct vty *vty)
+{
+	return 0;
+}
+
+DEFPY_NOSH (isis_ppr,
+       isis_ppr_cmd,
+       "ppr\
+          [flags {S$ppr_flag_S|D$ppr_flag_D|A$ppr_flag_A|L$ppr_flag_L}]\
+	  id\
+            <\
+              mpls$type (16-1048575)$label\
+              |ipv4$type A.B.C.D/M$prefix\
+              |ipv6$type X:X::X:X/M$prefix\
+              |srv6$type X:X::X:X/M$prefix\
+            >\
+            [flags {L$id_flag_L|A$id_flag_A}]\
+            [algorithm <spf|strict-spf>$algorithm]",
+       "PPR\n"
+       "ID\n"
+       "MPLS\n"
+       "MPLS label\n"
+       "IPv4\n"
+       "IPv4 address\n"
+       "IPv6\n"
+       "IPv6 address\n"
+       "SRv6\n"
+       "IPv6 address\n"
+       "Flags\n"
+       "S flag\n"
+       "D flag\n"
+       "A flag\n"
+       "L flag\n"
+       "Algorithm\n"
+       "SPF\n"
+       "Strict SPF\n")
+{
+	return CMD_SUCCESS;
+}
+
+DEFPY (isis_ppr_prefix,
+       isis_ppr_prefix_cmd,
+       "prefix <A.B.C.D/M|X:X::X:X/M>$prefix topology " ISIS_MT_NAMES "$topology",
+       "PPR prefix\n"
+       "IPv4 prefix\n"
+       "IPv6 prefix\n"
+       "IS-IS topology\n"
+       ISIS_MT_DESCRIPTIONS)
+{
+	return CMD_SUCCESS;
+}
+
+DEFPY (isis_ppr_pde,
+       isis_ppr_pde_cmd,
+       "pde type <topological|non-topological>\
+	  pde-id\
+	    <\
+	      <mpls|sr-mpls-prefix-sid|sr-mpls-adj-sid> (0-4294967295)\
+	      |ipv4 A.B.C.D\
+	      |<ipv6|srv6-node-sid|srv6-adj-sid> X:X::X:X\
+	    >",
+       "Path Description Element (PDE)\n"
+       "PPR-PDE Type\n"
+       "Topological\n"
+       "Non-Topological\n"
+       "PDE-ID Type\n"
+       "SID/label\n"
+       "SR-MPLS Prefix SID\n"
+       "SR-MPLS Adjacency SID\n"
+       "MPLS label\n"
+       "IPv4 Address\n"
+       "Address\n"
+       "IPv6 Address\n"
+       "SRv6 Node SID\n"
+       "SRv6 Adjacency-SID\n"
+       "Address\n")
+{
+	return CMD_SUCCESS;
+}
+
+DEFPY (isis_ppr_attributes,
+       isis_ppr_attributes_cmd,
+       "attributes\
+	  {\
+            stats-packets\
+            |stats-bytes\
+            |router-id-v4 A.B.C.D\
+            |router-id-v6 X:X::X:X\
+            |metric (0-4294967295)\
+          }",
+       "PPR Attributes\n"
+       "Stats (in packets)\n"
+       "Stats (in bytes)\n"
+       "PPR-Prefix originating node's IPv4 Router ID\n"
+       "IPv4 address\n"
+       "PPR-Prefix originating node's IPv6 Router ID\n"
+       "IPv6 address\n"
+       "Metric\n"
+       "Metric value\n")
+{
+	return CMD_SUCCESS;
+}
+
 void isis_cli_init(void)
 {
 	install_element(CONFIG_NODE, &router_isis_cmd);
@@ -2020,6 +2128,15 @@ void isis_cli_init(void)
 	install_element(INTERFACE_NODE, &no_isis_priority_cmd);
 
 	install_element(ISIS_NODE, &log_adj_changes_cmd);
+
+	/* PPR temporary commands */
+	install_node(&isis_ppr_node, isis_ppr_config_write);
+	install_default(ISIS_PPR_NODE);
+
+	install_element(ISIS_NODE, &isis_ppr_cmd);
+	install_element(ISIS_PPR_NODE, &isis_ppr_prefix_cmd);
+	install_element(ISIS_PPR_NODE, &isis_ppr_pde_cmd);
+	install_element(ISIS_PPR_NODE, &isis_ppr_attributes_cmd);
 }
 
 #endif /* ifndef FABRICD */

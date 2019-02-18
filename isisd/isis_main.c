@@ -53,6 +53,7 @@
 #include "isisd/isis_routemap.h"
 #include "isisd/isis_zebra.h"
 #include "isisd/isis_te.h"
+#include "isisd/isis_ppr.h"
 #include "isisd/isis_errors.h"
 #include "isisd/isis_vty_common.h"
 #include "isisd/isis_bfd.h"
@@ -239,6 +240,7 @@ int main(int argc, char **argv, char **envp)
 	isis_redist_init();
 	isis_route_map_init();
 	isis_mpls_te_init();
+	isis_ppr_init();
 	lsp_init();
 	mt_init();
 

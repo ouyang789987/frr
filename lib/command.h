@@ -122,6 +122,7 @@ enum node_type {
 	LDP_L2VPN_NODE,		 /* LDP L2VPN node */
 	LDP_PSEUDOWIRE_NODE,     /* LDP Pseudowire node */
 	ISIS_NODE,		 /* ISIS protocol mode */
+	ISIS_PPR_NODE,		 /* ISIS PPR mode */
 	ACCESS_NODE,		 /* Access list node. */
 	PREFIX_NODE,		 /* Prefix list node. */
 	ACCESS_IPV6_NODE,	/* Access list node. */
