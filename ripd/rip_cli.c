@@ -368,8 +368,8 @@ void cli_show_rip_passive_default(struct vty *vty, struct lyd_node *dnode,
 }
 
 /*
- * XPath: /frr-ripd:ripd/instance/passive-interface
- *        /frr-ripd:ripd/instance/non-passive-interface
+ * XPath: /frr-ripd:ripd/instance/passive-interfaces/passive-interface
+ *        /frr-ripd:ripd/instance/non-passive-interfaces/non-passive-interface
  */
 DEFPY (rip_passive_interface,
        rip_passive_interface_cmd,
@@ -378,9 +378,10 @@ DEFPY (rip_passive_interface,
        "Suppress routing updates on an interface\n"
        "Interface name\n")
 {
-	nb_cli_enqueue_change(vty, "./passive-interface",
+	nb_cli_enqueue_change(vty, "./passive-interfaces/passive-interface",
 			      no ? NB_OP_DESTROY : NB_OP_CREATE, ifname);
-	nb_cli_enqueue_change(vty, "./non-passive-interface",
+	nb_cli_enqueue_change(vty,
+			      "./non-passive-interfaces/non-passive-interface",
 			      no ? NB_OP_CREATE : NB_OP_DESTROY, ifname);
 
 	return nb_cli_apply_changes(vty, NULL);

@@ -161,23 +161,31 @@ module frr-ripd {
           "Control whether interfaces are in the passive mode
            by default or not.";
       }
-      leaf-list passive-interface {
+      container passive-interfaces {
+        description
+          "RIP passive interfaces.";
         when "../passive-default = 'false'";
-        type string {
-          length "1..16";
+        leaf-list passive-interface {
+          type string {
+            length "1..16";
+          }
+          description
+            "A list of interfaces where the sending of RIP packets
+             is disabled.";
         }
-        description
-          "A list of interfaces where the sending of RIP packets
-           is disabled.";
       }
-      leaf-list non-passive-interface {
-        when "../passive-default = 'true'";
-        type string {
-          length "1..16";
-        }
+      container non-passive-interfaces {
         description
-          "A list of interfaces where the sending of RIP packets
-           is enabled.";
+          "RIP non-passive interfaces.";
+        when "../passive-default = 'true'";
+        leaf-list non-passive-interface {
+          type string {
+            length "1..16";
+          }
+          description
+            "A list of interfaces where the sending of RIP packets
+             is enabled.";
+        }
       }
       list redistribute {
         key "protocol";

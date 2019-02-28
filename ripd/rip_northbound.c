@@ -477,11 +477,11 @@ static int ripd_instance_passive_default_modify(enum nb_event event,
 }
 
 /*
- * XPath: /frr-ripd:ripd/instance/passive-interface
+ * XPath: /frr-ripd:ripd/instance/passive-interfaces/passive-interface
  */
-static int ripd_instance_passive_interface_create(enum nb_event event,
-						  const struct lyd_node *dnode,
-						  union nb_resource *resource)
+static int ripd_instance_passive_interfaces_passive_interface_create(
+	enum nb_event event, const struct lyd_node *dnode,
+	union nb_resource *resource)
 {
 	const char *ifname;
 
@@ -493,8 +493,8 @@ static int ripd_instance_passive_interface_create(enum nb_event event,
 	return rip_passive_nondefault_set(ifname);
 }
 
-static int ripd_instance_passive_interface_delete(enum nb_event event,
-						  const struct lyd_node *dnode)
+static int ripd_instance_passive_interfaces_passive_interface_destroy(
+	enum nb_event event, const struct lyd_node *dnode)
 {
 	const char *ifname;
 
@@ -507,12 +507,11 @@ static int ripd_instance_passive_interface_delete(enum nb_event event,
 }
 
 /*
- * XPath: /frr-ripd:ripd/instance/non-passive-interface
+ * XPath: /frr-ripd:ripd/instance/non-passive-interfaces/non-passive-interface
  */
-static int
-ripd_instance_non_passive_interface_create(enum nb_event event,
-					   const struct lyd_node *dnode,
-					   union nb_resource *resource)
+static int ripd_instance_non_passive_interfaces_non_passive_interface_create(
+	enum nb_event event, const struct lyd_node *dnode,
+	union nb_resource *resource)
 {
 	const char *ifname;
 
@@ -524,9 +523,8 @@ ripd_instance_non_passive_interface_create(enum nb_event event,
 	return rip_passive_nondefault_unset(ifname);
 }
 
-static int
-ripd_instance_non_passive_interface_delete(enum nb_event event,
-					   const struct lyd_node *dnode)
+static int ripd_instance_non_passive_interfaces_non_passive_interface_destroy(
+	enum nb_event event, const struct lyd_node *dnode)
 {
 	const char *ifname;
 
@@ -1381,15 +1379,15 @@ const struct frr_yang_module_info frr_ripd_info = {
 			.cbs.cli_show = cli_show_rip_passive_default,
 		},
 		{
-			.xpath = "/frr-ripd:ripd/instance/passive-interface",
-			.cbs.create = ripd_instance_passive_interface_create,
-			.cbs.destroy = ripd_instance_passive_interface_delete,
+			.xpath = "/frr-ripd:ripd/instance/passive-interfaces/passive-interface",
+			.cbs.create = ripd_instance_passive_interfaces_passive_interface_create,
+			.cbs.destroy = ripd_instance_passive_interfaces_passive_interface_destroy,
 			.cbs.cli_show = cli_show_rip_passive_interface,
 		},
 		{
-			.xpath = "/frr-ripd:ripd/instance/non-passive-interface",
-			.cbs.create = ripd_instance_non_passive_interface_create,
-			.cbs.destroy = ripd_instance_non_passive_interface_delete,
+			.xpath = "/frr-ripd:ripd/instance/non-passive-interfaces/non-passive-interface",
+			.cbs.create = ripd_instance_non_passive_interfaces_non_passive_interface_create,
+			.cbs.destroy = ripd_instance_non_passive_interfaces_non_passive_interface_destroy,
 			.cbs.cli_show = cli_show_rip_non_passive_interface,
 		},
 		{
