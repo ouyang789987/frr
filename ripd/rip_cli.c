@@ -352,6 +352,17 @@ DEFPY (rip_passive_default,
        "Suppress routing updates on an interface\n"
        "default for all interfaces\n")
 {
+	bool passive_default =
+		yang_dnode_get_bool(vty->candidate_config->dnode, "%s%s",
+				    VTY_CURR_XPATH, "/passive-default");
+
+	/* Nothing to do. */
+	if ((no && !passive_default) || (!no && passive_default))
+		return CMD_SUCCESS;
+
+	nb_cli_enqueue_change(vty, "./passive-interfaces", NB_OP_DESTROY, NULL);
+	nb_cli_enqueue_change(vty, "./non-passive-interfaces", NB_OP_DESTROY,
+			      NULL);
 	nb_cli_enqueue_change(vty, "./passive-default", NB_OP_MODIFY,
 			      no ? "false" : "true");
 
@@ -378,11 +389,19 @@ DEFPY (rip_passive_interface,
        "Suppress routing updates on an interface\n"
        "Interface name\n")
 {
-	nb_cli_enqueue_change(vty, "./passive-interfaces/passive-interface",
-			      no ? NB_OP_DESTROY : NB_OP_CREATE, ifname);
-	nb_cli_enqueue_change(vty,
-			      "./non-passive-interfaces/non-passive-interface",
-			      no ? NB_OP_CREATE : NB_OP_DESTROY, ifname);
+	bool passive_default =
+		yang_dnode_get_bool(vty->candidate_config->dnode, "%s%s",
+				    VTY_CURR_XPATH, "/passive-default");
+
+	if (passive_default) {
+		nb_cli_enqueue_change(
+			vty, "./non-passive-interfaces/non-passive-interface",
+			no ? NB_OP_CREATE : NB_OP_DESTROY, ifname);
+	} else {
+		nb_cli_enqueue_change(
+			vty, "./passive-interfaces/passive-interface",
+			no ? NB_OP_DESTROY : NB_OP_CREATE, ifname);
+	}
 
 	return nb_cli_apply_changes(vty, NULL);
 }
