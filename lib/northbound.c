@@ -384,6 +384,26 @@ static void nb_config_diff_created(const struct lyd_node *dnode,
 	}
 }
 
+static void nb_config_diff_deleted(const struct lyd_node *dnode,
+				   struct nb_config_cbs *changes)
+{
+	if (nb_operation_is_valid(NB_OP_DESTROY, dnode->schema))
+		nb_config_diff_add_change(changes, NB_OP_DESTROY, dnode);
+	else if (CHECK_FLAG(dnode->schema->nodetype, LYS_CONTAINER)) {
+		struct lyd_node *child;
+
+		/*
+		 * Non-presence containers need special handling since they
+		 * don't have "destroy" callbacks. In this case, what we need to
+		 * do is to call the "destroy" callbacks of their child nodes
+		 * when applicable.
+		 */
+		LY_TREE_FOR (dnode->child, child) {
+			nb_config_diff_deleted(child, changes);
+		}
+	}
+}
+
 /* Calculate the delta between two different configurations. */
 static void nb_config_diff(const struct nb_config *config1,
 			   const struct nb_config *config2,
@@ -408,8 +428,7 @@ static void nb_config_diff(const struct nb_config *config1,
 			break;
 		case LYD_DIFF_DELETED:
 			dnode = diff->first[i];
-			nb_config_diff_add_change(changes, NB_OP_DESTROY,
-						  dnode);
+			nb_config_diff_deleted(dnode, changes);
 			break;
 		case LYD_DIFF_CHANGED:
 			dnode = diff->second[i];
@@ -434,7 +453,9 @@ int nb_candidate_edit(struct nb_config *candidate,
 	struct lyd_node *dnode;
 	char xpath_edit[XPATH_MAXLEN];
 
-	if (!nb_operation_is_valid(operation, nb_node->snode)) {
+	if (!(operation == NB_OP_DESTROY
+	      && CHECK_FLAG(nb_node->snode->nodetype, LYS_CONTAINER))
+	    && !nb_operation_is_valid(operation, nb_node->snode)) {
 		flog_warn(EC_LIB_NB_CANDIDATE_EDIT_ERROR,
 			  "%s: %s operation not valid for %s", __func__,
 			  nb_operation_name(operation), xpath);
